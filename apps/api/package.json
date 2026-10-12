@@ -1,0 +1,20 @@
+{
+  "name": "@relay/api",
+  "version": "0.1.0",
+  "description": "Express backend API for Relay",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch --watch-path=.env src/index.js"
+  },
+  "dependencies": {
+    "@relay/shared": "*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "livekit-server-sdk": "^2.19.1",
+    "morgan": "^1.10.0"
+  },
+  "license": "MIT"
+}

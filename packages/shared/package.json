@@ -1,0 +1,17 @@
+{
+  "name": "@relay/shared",
+  "version": "0.1.0",
+  "description": "Shared constants and JavaScript utilities for Relay",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "keywords": [
+    "relay",
+    "video",
+    "ai",
+    "shared"
+  ],
+  "license": "MIT"
+}
