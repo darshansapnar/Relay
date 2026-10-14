@@ -10,8 +10,11 @@ import {
   Sparkles,
   MoreVertical,
   PhoneOff,
+  Disc,
+  Square,
 } from 'lucide-react';
 import { MoreOptionsMenu } from './MoreOptionsMenu.jsx';
+import { LOCAL_RECORDING_STATUS, isActiveRecordingStatus } from '../../utils/recordingProtocol.js';
 
 export const LiveMeetingControls = ({
   activePanel,
@@ -19,6 +22,13 @@ export const LiveMeetingControls = ({
   onLeaveClick,
   showMoreOptions,
   onToggleMoreOptions,
+  isHost = false,
+  recordingStatus = LOCAL_RECORDING_STATUS.IDLE,
+  recordingSupported = true,
+  startingRecording = false,
+  onStartRecordingClick,
+  onStopRecordingClick,
+  stoppingRecording = false,
 }) => {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant();
@@ -28,8 +38,19 @@ export const LiveMeetingControls = ({
   const [togglingCam, setTogglingCam] = useState(false);
   const [togglingScreen, setTogglingScreen] = useState(false);
 
+  // Set server-side when the host mutes/disables this participant's track
+  // (see apps/api/src/controllers/host.controller.js). The host's action
+  // also revokes permission to republish that track, so attempting to
+  // re-enable it here would just be rejected by the SFU -- check for it up
+  // front instead of letting that round-trip fail. Lifted again either
+  // directly by the host or via a "request to unmute/enable camera", which
+  // the participant sees as a HostRequestPrompt (see MeetingRoomLive.jsx).
+  const isMutedByHost = localParticipant?.attributes?.mutedByHost === 'true';
+  const isCameraDisabledByHost = localParticipant?.attributes?.cameraDisabledByHost === 'true';
+
   const handleToggleMic = async () => {
     if (!localParticipant || togglingMic) return;
+    if (isMutedByHost && !isMicrophoneEnabled) return;
     setTogglingMic(true);
     try {
       await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
@@ -42,6 +63,7 @@ export const LiveMeetingControls = ({
 
   const handleToggleCam = async () => {
     if (!localParticipant || togglingCam) return;
+    if (isCameraDisabledByHost && !isCameraEnabled) return;
     setTogglingCam(true);
     try {
       await localParticipant.setCameraEnabled(!isCameraEnabled);
@@ -81,14 +103,20 @@ export const LiveMeetingControls = ({
         <button
           type="button"
           onClick={handleToggleMic}
-          disabled={togglingMic}
+          disabled={togglingMic || (isMutedByHost && !isMicrophoneEnabled)}
           aria-label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
           className={`flex flex-col items-center justify-center w-12 h-12 rounded-2xl border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-relay-950 ${
             !isMicrophoneEnabled
               ? 'bg-red-500/15 border-red-500/40 text-red-400 hover:bg-red-500/25 focus:ring-red-500'
               : 'bg-relay-850 border-relay-700/80 text-white hover:bg-relay-800 hover:border-relay-600 focus:ring-brand'
           }`}
-          title={isMicrophoneEnabled ? 'Mute Microphone' : 'Unmute Microphone'}
+          title={
+            isMutedByHost && !isMicrophoneEnabled
+              ? 'Muted by host'
+              : isMicrophoneEnabled
+                ? 'Mute Microphone'
+                : 'Unmute Microphone'
+          }
         >
           {!isMicrophoneEnabled ? (
             <MicOff className="w-5 h-5" />
@@ -101,14 +129,20 @@ export const LiveMeetingControls = ({
         <button
           type="button"
           onClick={handleToggleCam}
-          disabled={togglingCam}
+          disabled={togglingCam || (isCameraDisabledByHost && !isCameraEnabled)}
           aria-label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
           className={`flex flex-col items-center justify-center w-12 h-12 rounded-2xl border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-relay-950 ${
             !isCameraEnabled
               ? 'bg-red-500/15 border-red-500/40 text-red-400 hover:bg-red-500/25 focus:ring-red-500'
               : 'bg-relay-850 border-relay-700/80 text-white hover:bg-relay-800 hover:border-relay-600 focus:ring-brand'
           }`}
-          title={isCameraEnabled ? 'Turn Off Camera' : 'Turn On Camera'}
+          title={
+            isCameraDisabledByHost && !isCameraEnabled
+              ? 'Camera disabled by host'
+              : isCameraEnabled
+                ? 'Turn Off Camera'
+                : 'Turn On Camera'
+          }
         >
           {!isCameraEnabled ? (
             <VideoOff className="w-5 h-5" />
@@ -132,6 +166,53 @@ export const LiveMeetingControls = ({
         >
           <Share2 className="w-5 h-5" />
         </button>
+
+        {/* Host-only local recording control. This is a browser-local
+            feature with no backend route to re-verify -- the authorization
+            boundary IS the UI gate here, using the same authoritative,
+            server-assigned host identity (`isHost`, derived from
+            participant.attributes.role -- see MeetingRoomLive.jsx) as every
+            other host-only control in this app. A non-host has no code path
+            that can start or stop another participant's local recording;
+            the only cross-participant action is withdrawing consent, which
+            is intentionally available to everyone (see
+            RecordingStatusBanner.jsx). */}
+        {isHost && (
+          <button
+            type="button"
+            onClick={
+              isActiveRecordingStatus(recordingStatus)
+                ? onStopRecordingClick
+                : onStartRecordingClick
+            }
+            disabled={
+              isActiveRecordingStatus(recordingStatus)
+                ? stoppingRecording
+                : !recordingSupported || startingRecording
+            }
+            aria-label={
+              isActiveRecordingStatus(recordingStatus) ? 'Stop recording' : 'Start recording'
+            }
+            className={`flex flex-col items-center justify-center w-12 h-12 rounded-2xl border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-relay-950 disabled:opacity-40 ${
+              isActiveRecordingStatus(recordingStatus)
+                ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/25 focus:ring-red-500'
+                : 'bg-relay-850 border-relay-700/80 text-relay-300 hover:text-white hover:bg-relay-800 focus:ring-brand'
+            }`}
+            title={
+              !recordingSupported && !isActiveRecordingStatus(recordingStatus)
+                ? 'This browser does not support local audio recording (requires MediaRecorder with WebM/Opus support)'
+                : isActiveRecordingStatus(recordingStatus)
+                  ? 'Stop Recording'
+                  : 'Start Recording'
+            }
+          >
+            {isActiveRecordingStatus(recordingStatus) ? (
+              <Square className="w-4 h-4 fill-current" />
+            ) : (
+              <Disc className="w-5 h-5" />
+            )}
+          </button>
+        )}
 
         <div className="h-7 w-px bg-relay-800 mx-1 hidden sm:block" />
 

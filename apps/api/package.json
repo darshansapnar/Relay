@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch --watch-path=.env src/index.js"
+    "dev": "node --watch --watch-path=.env src/index.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@relay/shared": "*",
@@ -16,5 +17,8 @@
     "livekit-server-sdk": "^2.19.1",
     "morgan": "^1.10.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^5.0.4"
+  }
 }

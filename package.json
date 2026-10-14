@@ -13,6 +13,7 @@
     "dev:api": "npm run dev -w @relay/api",
     "dev:web": "npm run dev -w @relay/web",
     "build": "npm run build -w @relay/web",
+    "test": "npm run test -w @relay/api && npm run test -w @relay/web",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

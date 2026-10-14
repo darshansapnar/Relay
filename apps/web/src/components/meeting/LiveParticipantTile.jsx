@@ -1,6 +1,6 @@
 import React from 'react';
 import { VideoTrack } from '@livekit/components-react';
-import { Mic, MicOff, VideoOff, Crown } from 'lucide-react';
+import { Mic, MicOff, VideoOff, UserRound, Crown } from 'lucide-react';
 
 // Deterministic gradient generator based on participant identity/name
 const GRADIENTS = [
@@ -30,10 +30,20 @@ function getInitials(name = '') {
   return name.slice(0, 2).toUpperCase();
 }
 
-export const LiveParticipantTile = ({ trackRef, isHost = false, isScreenShare = false }) => {
+export const LiveParticipantTile = ({ trackRef, isScreenShare = false }) => {
   const participant = trackRef?.participant;
   const name = participant?.name || participant?.identity || 'Participant';
+  // LiveKit's own Participant.isLocal flag -- not a display-name comparison --
+  // is the only reliable way to tell "this browser's user" apart from a
+  // remote participant, since two people can pick the same display name.
   const isLocal = Boolean(participant?.isLocal);
+  // Host status is assigned once, server-side, at token mint time and
+  // broadcast to every participant via LiveKit's participant attributes --
+  // never derived from render/array order (see apps/api/src/controllers/
+  // meeting.controller.js and the docs on isLocal above).
+  const isParticipantHost = participant?.attributes?.role === 'host';
+  const isMutedByHost = participant?.attributes?.mutedByHost === 'true';
+  const isCameraDisabledByHost = participant?.attributes?.cameraDisabledByHost === 'true';
   const isSpeaking = Boolean(participant?.isSpeaking);
   const isMicrophoneEnabled = Boolean(participant?.isMicrophoneEnabled);
   const isCameraEnabled = Boolean(
@@ -73,7 +83,7 @@ export const LiveParticipantTile = ({ trackRef, isHost = false, isScreenShare = 
 
           <span className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-relay-400 bg-relay-800/80 px-2.5 py-0.5 rounded-full border border-relay-700/60">
             <VideoOff className="w-3 h-3 text-relay-400" />
-            Camera Off
+            {isCameraDisabledByHost ? 'Camera Disabled by Host' : 'Camera Off'}
           </span>
         </div>
       )}
@@ -100,13 +110,23 @@ export const LiveParticipantTile = ({ trackRef, isHost = false, isScreenShare = 
         </div>
       )}
 
-      {/* Top Right: Host tag */}
-      {isHost && (
-        <div className="absolute top-3.5 right-3.5 z-30 flex items-center gap-1 bg-relay-800/80 border border-relay-700 text-amber-300 text-[10px] font-medium px-2 py-0.5 rounded-md">
-          <Crown className="w-3 h-3 text-amber-400" />
-          <span>Host</span>
-        </div>
-      )}
+      {/* Top Right: Host / local-participant tag. isParticipantHost and isLocal
+          both come straight from the LiveKit SDK's own participant state --
+          never "whichever tile happened to render first". */}
+      {!isScreenShare &&
+        (isParticipantHost ? (
+          <div className="absolute top-3.5 right-3.5 z-30 flex items-center gap-1 bg-relay-800/80 border border-relay-700 text-amber-300 text-[10px] font-medium px-2 py-0.5 rounded-md">
+            <Crown className="w-3 h-3 text-amber-400" />
+            <span>Host</span>
+          </div>
+        ) : (
+          isLocal && (
+            <div className="absolute top-3.5 right-3.5 z-30 flex items-center gap-1 bg-brand/15 border border-brand/30 text-brand-light text-[10px] font-medium px-2 py-0.5 rounded-md">
+              <UserRound className="w-3 h-3 text-brand-light" />
+              <span>You</span>
+            </div>
+          )
+        ))}
 
       {/* Bottom Bar: Name & Mic status */}
       <div className="absolute bottom-3.5 left-3.5 right-3.5 z-30 flex items-center justify-between text-xs">
@@ -124,7 +144,13 @@ export const LiveParticipantTile = ({ trackRef, isHost = false, isScreenShare = 
                 ? 'bg-red-500/20 border-red-500/30 text-red-400'
                 : 'bg-relay-800/80 border-relay-700/80 text-emerald-400'
             }`}
-            title={isMicrophoneEnabled ? 'Microphone Active' : 'Microphone Muted'}
+            title={
+              isMutedByHost
+                ? 'Muted by host'
+                : isMicrophoneEnabled
+                  ? 'Microphone Active'
+                  : 'Microphone Muted'
+            }
           >
             {!isMicrophoneEnabled ? (
               <MicOff className="w-3.5 h-3.5" />

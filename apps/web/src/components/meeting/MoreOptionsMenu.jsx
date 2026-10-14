@@ -82,7 +82,7 @@ export const MoreOptionsMenu = ({ isOpen, onClose }) => {
       <div className="pt-1 border-t border-relay-800">
         <button
           onClick={() => {
-            alert('Thank you! Feedback reported to the development team.');
+            alert('Issue reporting is not wired up yet -- nothing was sent.');
             onClose();
           }}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-relay-400 hover:text-white hover:bg-relay-800 transition-colors text-left"

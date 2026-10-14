@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { requestMeetingToken } from '../api/meetingApi.js';
 import { PreJoinScreen } from '../components/meeting/PreJoinScreen.jsx';
@@ -30,6 +30,14 @@ export const MeetingPage = () => {
         setConnectionData({
           token: tokenResponse.token,
           serverUrl: tokenResponse.url,
+          // The backend's own sanitized room name (see
+          // apps/api/src/controllers/meeting.controller.js), not the raw
+          // :roomId URL param -- this is what every recording/moderation
+          // API call is keyed by, and it's known synchronously here rather
+          // than only after the LiveKit connection completes (see
+          // MeetingRoomLive.jsx's recording-status effect for why that
+          // distinction matters).
+          roomName: tokenResponse.roomName,
           audio,
           video,
         });
@@ -46,15 +54,35 @@ export const MeetingPage = () => {
     [roomId]
   );
 
-  // If the user entered directly with a displayName already provided in state (from modal)
+  // If the user entered directly with a displayName already provided in state (from modal).
+  // Guarded with a ref so this only ever calls handleConnect once per page
+  // visit. Without it, React.StrictMode (apps/web/src/main.jsx) double-
+  // invokes this effect in development -- both invocations see the same
+  // 'prejoin' state (the setMeetingState('connecting') from the first call
+  // hasn't committed yet when the second fires), so two separate
+  // /api/meetings/token requests go out for the same "Create Meeting" join.
+  // Each gets its own participantIdentity and can independently race to
+  // claim host (see apps/api/.../meeting.controller.js); whichever token
+  // response the UI ends up using isn't guaranteed to be the one whose
+  // identity actually won that race, producing a token that *claims* host
+  // (attributes.role) while the backend's authorizeHostRequest() -- keyed
+  // off the room's own recorded host identity -- correctly rejects it.
+  const hasAutoJoinedRef = useRef(false);
   useEffect(() => {
-    if (location.state?.autoJoin && location.state?.displayName && meetingState === 'prejoin') {
-      handleConnect({
-        displayName: location.state.displayName,
-        audio: true,
-        video: true,
-      });
+    if (
+      hasAutoJoinedRef.current ||
+      !location.state?.autoJoin ||
+      !location.state?.displayName ||
+      meetingState !== 'prejoin'
+    ) {
+      return;
     }
+    hasAutoJoinedRef.current = true;
+    handleConnect({
+      displayName: location.state.displayName,
+      audio: true,
+      video: true,
+    });
   }, [location.state, meetingState, handleConnect]);
 
   const handleDisconnected = () => {
@@ -77,6 +105,7 @@ export const MeetingPage = () => {
       <MeetingRoomLive
         token={connectionData.token}
         serverUrl={connectionData.serverUrl}
+        roomName={connectionData.roomName}
         audio={mediaPreferences.audio}
         video={mediaPreferences.video}
         onDisconnected={handleDisconnected}

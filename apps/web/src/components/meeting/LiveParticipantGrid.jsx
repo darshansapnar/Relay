@@ -5,14 +5,14 @@ import { LiveParticipantTile } from './LiveParticipantTile.jsx';
 import { Users, Copy } from 'lucide-react';
 
 export const LiveParticipantGrid = ({ onCopyLink }) => {
-  // Query all camera and screen share tracks from LiveKit room
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { updateOnlyOn: [] }
-  );
+  // Query all camera and screen share tracks from LiveKit room.
+  // Uses the hook's default room-event subscription (including TrackMuted/TrackUnmuted) so the
+  // grid re-renders when a mic/camera is toggled after its initial publish, since LiveKit mutes
+  // an already-published track instead of unpublishing it on subsequent toggles.
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
 
   const screenTracks = tracks.filter(t => t.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter(t => t.source === Track.Source.Camera);
@@ -46,9 +46,9 @@ export const LiveParticipantGrid = ({ onCopyLink }) => {
 
           {/* Bottom Strip: Camera tiles */}
           <div className="h-44 sm:h-48 flex items-center gap-3 overflow-x-auto pb-1 shrink-0">
-            {cameraTracks.map((trackRef, idx) => (
+            {cameraTracks.map(trackRef => (
               <div key={trackRef.participant.identity} className="h-full w-56 sm:w-64 shrink-0">
-                <LiveParticipantTile trackRef={trackRef} isHost={idx === 0} />
+                <LiveParticipantTile trackRef={trackRef} />
               </div>
             ))}
           </div>
@@ -66,7 +66,7 @@ export const LiveParticipantGrid = ({ onCopyLink }) => {
                     : ''
                 }`}
               >
-                <LiveParticipantTile trackRef={trackRef} isHost={idx === 0} />
+                <LiveParticipantTile trackRef={trackRef} />
               </div>
             ))}
           </div>
