@@ -1,6 +1,7 @@
 import { TrackSource } from 'livekit-server-sdk';
 import { config } from '../config/index.js';
 import { getRoomServiceClient, authorizeHostRequest } from '../services/livekitAdmin.js';
+import { chatStore } from '../services/chatStore.js';
 
 const sendAuthzError = (res, err) => {
   if (err.statusCode) {
@@ -249,7 +250,17 @@ export const endMeetingForEveryone = async (req, res, next) => {
     }
 
     await authorizeHostRequest(req, roomName);
+
+    // Attempt final meeting summary if transcript exists and quota permits
+    try {
+      const { aiManager } = await import('../services/aiManager.js');
+      await aiManager.maybeTriggerSummary(roomName, { force: false, isMeetingEnd: true });
+    } catch (summaryErr) {
+      console.warn(`[Relay AI] Final meeting summary attempt noticed for ${roomName}:`, summaryErr.message);
+    }
+
     await getRoomServiceClient().deleteRoom(roomName);
+    chatStore.clearRoom(roomName);
 
     return res.status(200).json({ success: true });
   } catch (err) {

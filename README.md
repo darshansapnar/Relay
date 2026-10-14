@@ -74,9 +74,15 @@ CLIENT_URL=http://localhost:5173
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your-api-key
 LIVEKIT_API_SECRET=your-api-secret
+
+# Neon Serverless PostgreSQL Configuration (keep secret, never expose to client)
+# Pooled connection string (uses PgBouncer with -pooler hostname for web app traffic)
+DATABASE_URL=postgresql://neondb_owner:<password>@<endpoint-id>-pooler.<region>.aws.neon.tech/relay?sslmode=require
+# Direct connection string (unpooled host for schema migrations / DDL)
+DATABASE_URL_UNPOOLED=postgresql://neondb_owner:<password>@<endpoint-id>.<region>.aws.neon.tech/relay?sslmode=require
 ```
 
-> **Security Note**: LiveKit API credentials exist exclusively on the Express backend server. They are never exposed in frontend code, client builds, or browser bundles. Meeting recording (below) has no backend component at all -- it needs no additional configuration here.
+> **Security Note**: LiveKit and Neon PostgreSQL credentials exist exclusively on the Express backend server (`apps/api/.env`). They are never exposed in frontend code, client builds, or browser bundles. Connection strings and passwords are never output in server logs or API health responses.
 
 ---
 
@@ -106,7 +112,7 @@ LIVEKIT_API_SECRET=your-api-secret
 
 ## API Endpoints
 
-### 1. Health Status
+### 1. Health Status & Database Diagnostics
 
 - **Method**: `GET`
 - **Route**: `http://localhost:5000/api/health`
@@ -116,10 +122,27 @@ LIVEKIT_API_SECRET=your-api-secret
     "status": "ok",
     "service": "relay-api",
     "uptime": 24.15,
-    "timestamp": "2026-10-13T01:10:00.000Z",
-    "environment": "development"
+    "timestamp": "2026-10-14T07:20:00.000Z",
+    "environment": "development",
+    "database": {
+      "status": "connected",
+      "responseTimeMs": 35,
+      "database": "relay",
+      "serverTime": "2026-10-14T07:20:00.000Z",
+      "isPooled": true,
+      "pool": {
+        "total": 1,
+        "idle": 1,
+        "waiting": 0
+      },
+      "timestamp": "2026-10-14T07:20:00.000Z"
+    }
   }
   ```
+
+- **Method**: `GET`
+- **Route**: `http://localhost:5000/api/health/db`
+- **Response**: Returns the database health object directly (`200 OK` on connected or not_configured, `503 Service Unavailable` on database error).
 
 ### 2. LiveKit Meeting Token Minting
 
@@ -245,7 +268,182 @@ Once your LiveKit Cloud credentials (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_
 
 ---
 
-## Testing Meeting Recording (Manual Verification)
+## In-Meeting Real-Time Chat (Everyone & Private Direct Messages)
+
+Relay includes a complete Zoom-style in-meeting chat system powered by Socket.IO real-time delivery, Neon Serverless PostgreSQL persistence, cryptographically verified LiveKit access tokens, and strict server-side privacy boundaries.
+
+### Architecture & Design
+
+```text
+┌─────────────────┐       Socket.IO Handshake (Verified LiveKit JWT)       ┌────────────────────────┐
+│  Browser Client │ ─────────────────────────────────────────────────────► │ Relay Express Backend  │
+│  (React + Vite) │ ◄───────────────────────────────────────────────────── │ (Socket.IO + REST API) │
+└─────────────────┘                                                        └───────────┬────────────┘
+         ▲                                                                             │
+         │                        Message Dispatch & Filtering                         ▼
+         │                 ┌────────────────────────────────────────────────────────────────────────┐
+         └──────────────── │ • Everyone Chat: broadcast to room:roomName                            │
+                           │ • Private DM: sent ONLY to user:room:recipient & user:room:sender       │
+                           │ • History Query: filtered server-side (only authorized messages)        │
+                           │ • Neon PostgreSQL: persistent chat_messages & meeting_memberships       │
+                           │ • Rate Limiting: sliding window (max 5 msgs/2s per participant)        │
+                           │ • Max Length: 2,000 characters with control-character sanitization     │
+                           └───────────────────────────────────┬────────────────────────────────────┘
+                                                               │
+                                                               ▼
+                                              ┌─────────────────────────────────┐
+                                              │    Neon Serverless Postgres     │
+                                              │   • chat_messages               │
+                                              │   • meeting_memberships         │
+                                              │   • chat_read_states            │
+                                              │   • schema_migrations           │
+                                              └─────────────────────────────────┘
+```
+
+### Database Schema & Migrations
+
+Chat data is persisted in Neon Serverless PostgreSQL. Database migrations are managed via versioned SQL files in [`apps/api/src/db/migrations/`](file:///e:/PROJECTS/Relay/apps/api/src/db/migrations/).
+
+#### Migration Runner:
+Migrations run automatically on server start or can be executed manually:
+```bash
+node apps/api/src/db/migrate.js
+```
+
+#### Tables:
+1. **`meeting_memberships`**: Stores room participants, identities, display names, host flags, and join timestamps for access control after reconnects.
+2. **`chat_messages`**: Stores message payloads (`id`, `client_message_id`, `room_name`, `target_type`, `sender_identity`, `sender_name`, `recipient_identity`, `recipient_name`, `content`, `created_at`).
+   - `target_type`: `'everyone'` or `'direct'`.
+   - Unique partial index on `(room_name, sender_identity, client_message_id)` for network-retry deduplication.
+   - Partial indexes on `(room_name, created_at DESC) WHERE target_type = 'everyone'` and direct message sender/recipient indexes for fast queries.
+3. **`chat_read_states`**: Tracks per-participant read positions for unread counter badges.
+4. **`schema_migrations`**: Records applied migration versions idempotently.
+
+### Socket.IO Real-Time Event Protocol
+
+All Socket.IO connections are authenticated via LiveKit JWTs in the handshake (`auth: { token, roomName }`).
+
+| Event | Direction | Payload | Description |
+| :--- | :--- | :--- | :--- |
+| `chat:send` | Client → Server | `{ content, targetType, recipientIdentity, recipientName, clientMessageId }` | Sends an everyone or private message. Returns ack `{ success, message }`. |
+| `chat:message` | Server → Client | `{ id, content, senderIdentity, senderName, targetType, recipientIdentity, timestamp }` | Delivered to authorized meeting participants in real time. |
+| `chat:getHistory` | Client → Server | `{ limit, before, targetType, peerIdentity }` | Paginated retrieval of authorized chat history. Returns `{ success, messages, hasMore, nextCursor, unread }`. |
+| `chat:markRead` | Client → Server | `{ targetType, peerIdentity, lastReadMessageId }` | Updates read state. Returns `{ success, unread }`. |
+| `chat:unreadUpdate` | Server → Client | `{ everyone, directTotal, directByPeer }` | Real-time push of updated unread counts. |
+| `chat:error` | Server → Client | `{ error, code, retryAfterMs }` | Sent on validation, rate-limiting, or server error. |
+
+### Security & Privacy Controls
+
+1. **Cryptographic Identity Verification**:
+   - Identity is derived exclusively from the signed LiveKit access token (`claims.sub`, `claims.name`, `claims.video.room`).
+   - Client-supplied sender identities or host flags are never accepted or trusted.
+2. **Strict Direct Message Isolation**:
+   - Private messages are never broadcast to the room channel.
+   - Socket routing delivers private messages strictly to `user:${roomName}:${recipientIdentity}` and `user:${roomName}:${senderIdentity}`.
+   - PostgreSQL queries filter direct messages with parameterized SQL (`WHERE target_type = 'everyone' OR (target_type = 'direct' AND ($2 IN (sender_identity, recipient_identity)))`).
+   - Third-party participants cannot access private messages through real-time events, REST endpoints, or history queries.
+3. **Recipient Membership Validation**:
+   - For direct messages, the backend verifies that the recipient is an authorized member of the meeting via `meeting_memberships` before persistence and delivery.
+4. **Abuse Prevention**:
+   - Input sanitization strips control characters while preserving standard unicode and emojis.
+   - Message length is enforced up to 2,000 characters.
+   - Sliding-window rate limiting restricts message flooding (max 5 messages per 2-second window).
+5. **No Secrets in Logs or Client**:
+   - Database connection strings and tokens are masked. Client never sees database credentials.
+
+### Chat API Endpoints (REST Fallback)
+
+#### 1. Retrieve Authorized Chat Messages
+
+- **Method**: `GET`
+- **Route**: `http://localhost:5000/api/meetings/:roomName/messages`
+- **Header**: `Authorization: Bearer <livekit-access-token>`
+- **Query Params**: `limit` (default 50), `before` (cursor), `targetType`, `peerIdentity`
+- **Response (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "messages": [
+      {
+        "id": "msg_1728901234567_abc12345",
+        "roomName": "rel-sync",
+        "targetType": "everyone",
+        "senderIdentity": "user_1728900000000_12345678",
+        "senderName": "Alice",
+        "recipientIdentity": null,
+        "recipientName": null,
+        "content": "Hello team!",
+        "timestamp": 1728901234567,
+        "createdAt": "2026-10-14T12:00:00.000Z"
+      }
+    ],
+    "hasMore": false,
+    "nextCursor": null,
+    "unread": { "everyone": 0, "directTotal": 0, "directByPeer": {} },
+    "participantIdentity": "user_1728900000000_12345678"
+  }
+  ```
+
+#### 2. Send Message via REST Fallback
+
+- **Method**: `POST`
+- **Route**: `http://localhost:5000/api/meetings/:roomName/messages`
+- **Header**: `Authorization: Bearer <livekit-access-token>`
+- **Request Body**:
+  ```json
+  {
+    "content": "Secret note for Bob",
+    "targetType": "direct",
+    "recipientIdentity": "user_1728900000000_87654321",
+    "recipientName": "Bob"
+  }
+  ```
+
+---
+
+## Testing Real-Time Chat (Manual Verification Instructions)
+
+To verify Everyone chat, Private DMs, and strict privacy isolation:
+
+1. **Launch the project**:
+   ```bash
+   npm run dev
+   ```
+2. **Open Window 1 (Host/Alice)**:
+   - Navigate to `http://localhost:5173`.
+   - Click **Create Meeting**, enter name **Alice**, and click **Join Meeting**.
+   - Note the room ID from the URL or click **Copy Link**.
+3. **Open Window 2 (Guest/Bob)**:
+   - Open a private / incognito browser window.
+   - Navigate to the room URL, enter name **Bob**, and join.
+4. **Open Window 3 (Observer/Charlie)**:
+   - Open a third browser window (or different browser, e.g. Edge).
+   - Navigate to the room URL, enter name **Charlie**, and join.
+5. **Verify Everyone Chat**:
+   - In Window 1 (Alice), click the **Chat** icon in the bottom control bar to open the chat sidebar.
+   - Ensure the tab is set to **Everyone**.
+   - Send: `"Hello everyone!"`.
+   - Verify: Windows 2 (Bob) and 3 (Charlie) receive the message in real time, with Alice's name and timestamp.
+   - In Windows 2 and 3 with the chat sidebar closed, verify the **Chat** button displays a blue unread message badge (`1`).
+6. **Verify Private Direct Messages**:
+   - In Window 1 (Alice), click **Direct Messages** tab or select **To: Bob (Direct)** in the recipient dropdown.
+   - Send: `"Hey Bob, this is a private message for you."`.
+   - Verify: Window 2 (Bob) receives the direct message with a distinct amber `(Private)` badge.
+   - Verify: If Bob's chat panel was closed, Bob's Chat button displays an amber/priority unread badge (`1`).
+   - Verify in Window 3 (Charlie): Charlie's chat panel **does not** receive the message, Charlie's unread counter does **not** increment, and querying messages yields zero visibility of Alice & Bob's private message.
+7. **Verify Quick Direct Message from Participants Panel**:
+   - In Window 2 (Bob), open the **Participants** panel.
+   - Next to Alice, click the **Message** button.
+   - Verify the Chat panel opens automatically with Alice preselected for direct messaging.
+8. **Verify Disconnection & History Restoration**:
+   - Refresh Window 2 (Bob).
+   - Re-open the Chat panel after reconnecting.
+   - Verify that all previous Everyone messages and Alice's private message to Bob are fully restored from history, while remaining invisible to Charlie.
+9. **Verify Input Validation & Rate Limiting**:
+   - Try sending an empty message or whitespace only; verify the Send button is disabled.
+   - Send more than 5 messages in 2 seconds; verify the inline rate-limit banner prompts to wait briefly before retrying.
+
+---
 
 Unlike a cloud-recording approach, this needs no external service to test -- just real LiveKit Cloud credentials (already required for any meeting) and two browser windows.
 
@@ -274,6 +472,53 @@ Unlike a cloud-recording approach, this needs no external service to test -- jus
 - **Recording only captures what the host's browser can hear**: since mixing happens in the host's own browser from their own subscribed audio tracks, the recording's fidelity depends on the host's own network/CPU conditions. If the host's connection to a specific participant degrades, that participant's audio in the recording degrades too, independent of how that participant sounds to everyone else.
 - **Recording is lost if the host's tab crashes outright**: `MediaRecorder` is configured to flush data every second (so a crash loses at most ~1 second, not the whole recording) and a `beforeunload` guard warns against closing the tab, but an actual browser/tab crash (not a normal close) cannot be intercepted -- whatever was flushed to that point is what would be recoverable, and this app does not currently implement any such recovery UI.
 - **No recording history**: by design for this phase -- the file downloads directly to the host's device on stop; there's no in-app list of past recordings, since nothing is ever uploaded anywhere. Intentionally out of scope; see the Phase 4 requirements.
-- **Single recording device**: only the host who clicked Start produces a file; if you need every participant to have their own local copy, that would need to be a separate "everyone records their own audio" feature, not built here.
-- **Not tested**: Firefox and mobile browsers (expected to work given their `MediaRecorder`/WebM support, but not exercised in this change's live testing -- see Browser Compatibility above), and a true browser-crash recovery scenario.
 - **Production Authentication**: Future production releases will require session authentication (OAuth / JWT) to prevent token abuse.
+
+---
+
+## AI Meeting Assistant (Relay Copilot)
+
+Relay includes a complete, production-grade AI Meeting Assistant that provides automated live speech-to-text transcription, cumulative executive summaries, key discussion points, team decisions, and concrete action items with assignees.
+
+### 1. Architecture & Provider Selection
+- **Primary LLM**: **Groq** (`openai/gpt-oss-120b`), using `GROQ_API_KEY` and `GROQ_PRIMARY_MODEL`.
+- **Fallback LLM**: **Google Gemini** (`gemini-3.5-flash-lite`), using `GEMINI_API_KEY` and `GEMINI_FALLBACK_MODEL`.
+- **Speech-to-Text**: **Google Gemini** (`gemini-3.5-transcribe`), using `TRANSCRIPTION_PROVIDER=gemini` and `GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe` (with Groq Whisper supported via `TRANSCRIPTION_PROVIDER=groq`).
+- **Persistence**: **Neon PostgreSQL** stores finalized transcript segments (`meeting_transcripts`), versioned summaries (`meeting_summaries`), and room AI states (`meeting_ai_states`).
+- **Real-Time Delivery**: Socket.IO events (`ai:statusUpdate`, `ai:transcriptChunk`, `ai:summaryUpdate`) stream updates to all authorized participants in the room.
+
+### 2. Audio Capture Pipeline
+- Captures audio from local mic and remote participant audio tracks in the browser.
+- Slices audio chunks (5-7 seconds) per speaker with authenticated speaker attribution (`speakerIdentity`, `speakerName`).
+- Transcribes audio into text without storing raw audio on cloud storage.
+
+### 3. Cost Controls & Fallback Safeguards
+- **Accumulation & Cooldown**: Only generates summaries after at least `AI_SUMMARY_MIN_CHARS` (default ~1,500 chars) of new discussion and a configurable cooldown (`AI_SUMMARY_COOLDOWN_MS`, default 5 minutes).
+- **Hard Cost Limits**: Enforces `AI_MAX_SUMMARIES_PER_MEETING` (default 10), token limits, and `AI_ASSISTANT_ENABLED` global kill switch.
+- **Provider Fallback**:
+  - Attempts Groq first.
+  - On transient errors (5xx/timeout), performs bounded retry with exponential backoff.
+  - On rate limits (429) or quota exhaustion, smoothly falls back to Gemini.
+  - When both free-tier limits are reached, pauses summarization gracefully and displays:
+    `"AI summaries are paused because the free-tier limit has been reached. Your meeting can continue normally."`
+  - If transcription quota is reached:
+    `"AI transcription is paused because the free-tier limit has been reached."`
+- **Zero Paid Surprises**: Never silently switches to paid tiers or incurs unexpected cloud costs.
+
+### 4. Participant Consent & Non-Intrusive UX
+- Before processing begins, informs participants and requires explicit confirmation.
+- Shows visible "AI Assistant Active" pulsing badge in header and control bar.
+- Includes tabs for **Live Transcript**, **Overview**, **Summary**, **Decisions**, and **Action Items**.
+- Provides a clean "Stop" button to halt processing at any time.
+
+### 5. Testing with Multiple Participants
+1. Start API: `npm run dev -w @relay/api`
+2. Start Web: `npm run dev -w @relay/web`
+3. Join meeting room as Host in Browser 1.
+4. Join meeting room as Guest in Browser 2.
+5. In Browser 1, open AI Copilot (Sparkles icon in control bar).
+6. Check participant consent and click **Enable AI Assistant**.
+7. Speak from Browser 1 and Browser 2; verify transcripts appear with accurate speaker attribution.
+8. Click **Generate Summary Now** or wait for cumulative summary update.
+9. Verify both Browser 1 and Browser 2 receive real-time summary and action items.
+

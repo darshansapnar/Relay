@@ -123,7 +123,9 @@ describe('LiveParticipantsPanel host moderation controls', () => {
       participant({ identity: 'user_13_remote', name: 'Other', isLocal: false }),
     ];
 
-    render(<LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />);
+    render(
+      <LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />
+    );
 
     fireEvent.click(screen.getByText('Mute'));
 
@@ -146,19 +148,35 @@ describe('LiveParticipantsPanel host moderation controls', () => {
       participant({ identity: 'user_15_remote', name: 'Other', isLocal: false }),
     ];
 
-    render(<LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />);
+    render(
+      <LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />
+    );
 
     fireEvent.click(screen.getByText('Remove'));
 
-    expect(meetingApi.removeParticipant).toHaveBeenCalledWith('room1', 'user_15_remote', 'host-tok');
+    expect(meetingApi.removeParticipant).toHaveBeenCalledWith(
+      'room1',
+      'user_15_remote',
+      'host-tok'
+    );
   });
 });
 
 describe('LiveParticipantsPanel camera controls and request-to-enable workflow', () => {
   it('shows "Mute" (not a request) when the target mic is currently on', () => {
     mockParticipants = [
-      participant({ identity: 'user_20_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
-      participant({ identity: 'user_21_remote', name: 'Other', isLocal: false, isMicrophoneEnabled: true }),
+      participant({
+        identity: 'user_20_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
+      participant({
+        identity: 'user_21_remote',
+        name: 'Other',
+        isLocal: false,
+        isMicrophoneEnabled: true,
+      }),
     ];
 
     render(<LiveParticipantsPanel isOpen onClose={() => {}} isHost token="tok" roomName="room1" />);
@@ -169,7 +187,12 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
 
   it('shows "Request Unmute" instead of "Mute" when the target mic is already off', () => {
     mockParticipants = [
-      participant({ identity: 'user_22_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_22_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({
         identity: 'user_23_remote',
         name: 'Other',
@@ -186,9 +209,19 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
 
   it('shows "Camera Off" when the target camera is on, "Request Camera" when it is off', () => {
     mockParticipants = [
-      participant({ identity: 'user_24_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_24_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({ identity: 'user_25_on', name: 'CamOn', isLocal: false, isCameraEnabled: true }),
-      participant({ identity: 'user_26_off', name: 'CamOff', isLocal: false, isCameraEnabled: false }),
+      participant({
+        identity: 'user_26_off',
+        name: 'CamOff',
+        isLocal: false,
+        isCameraEnabled: false,
+      }),
     ];
 
     render(<LiveParticipantsPanel isOpen onClose={() => {}} isHost token="tok" roomName="room1" />);
@@ -199,11 +232,23 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
 
   it('calls setParticipantCamera(disabled: true) when "Camera Off" is clicked', () => {
     mockParticipants = [
-      participant({ identity: 'user_27_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
-      participant({ identity: 'user_28_remote', name: 'Other', isLocal: false, isCameraEnabled: true }),
+      participant({
+        identity: 'user_27_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
+      participant({
+        identity: 'user_28_remote',
+        name: 'Other',
+        isLocal: false,
+        isCameraEnabled: true,
+      }),
     ];
 
-    render(<LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />);
+    render(
+      <LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />
+    );
 
     fireEvent.click(screen.getByText('Camera Off'));
 
@@ -217,7 +262,12 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
 
   it('"Request Unmute" lifts the host mute restriction and sends a real-time request, not just local state', async () => {
     mockParticipants = [
-      participant({ identity: 'user_29_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_29_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({
         identity: 'user_30_remote',
         name: 'Other',
@@ -242,14 +292,24 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
     fireEvent.click(screen.getByText('Request Unmute'));
 
     await vi.waitFor(() => {
-      expect(meetingApi.muteParticipant).toHaveBeenCalledWith('room1', 'user_30_remote', false, 'host-tok');
+      expect(meetingApi.muteParticipant).toHaveBeenCalledWith(
+        'room1',
+        'user_30_remote',
+        false,
+        'host-tok'
+      );
       expect(onSendRequest).toHaveBeenCalledWith('user_30_remote', 'unmute');
     });
   });
 
   it('"Request Camera" lifts the host camera restriction and sends a real-time request', async () => {
     mockParticipants = [
-      participant({ identity: 'user_31_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_31_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({
         identity: 'user_32_remote',
         name: 'Other',
@@ -286,7 +346,12 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
 
   it('shows per-row request status feedback (sent/accepted/declined) from requestStatusByKey', () => {
     mockParticipants = [
-      participant({ identity: 'user_33_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_33_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({
         identity: 'user_34_remote',
         name: 'Other',
@@ -321,7 +386,12 @@ describe('LiveParticipantsPanel camera controls and request-to-enable workflow',
     // leaving the host looking at an indefinite "Sent, awaiting response..."
     // for a request that may never be answered.
     mockParticipants = [
-      participant({ identity: 'user_35_host', name: 'Me', isLocal: true, attributes: { role: 'host' } }),
+      participant({
+        identity: 'user_35_host',
+        name: 'Me',
+        isLocal: true,
+        attributes: { role: 'host' },
+      }),
       participant({
         identity: 'user_36_remote',
         name: 'Other',

@@ -11,6 +11,7 @@ import {
   Crown,
   UserX,
   BellRing,
+  MessageSquare,
 } from 'lucide-react';
 import { Badge } from '../ui/Badge.jsx';
 import { muteParticipant, setParticipantCamera, removeParticipant } from '../../api/meetingApi.js';
@@ -43,6 +44,7 @@ export const LiveParticipantsPanel = ({
   roomName,
   requestStatusByKey = {},
   onSendRequest,
+  onDirectMessage,
 }) => {
   const participants = useParticipants();
   const [searchQuery, setSearchQuery] = useState('');
@@ -211,7 +213,9 @@ export const LiveParticipantsPanel = ({
 
                   <span
                     className={`p-1 rounded-md ${
-                      !isCamOn ? 'text-relay-500 bg-relay-800' : 'text-emerald-400 bg-emerald-500/10'
+                      !isCamOn
+                        ? 'text-relay-500 bg-relay-800'
+                        : 'text-emerald-400 bg-emerald-500/10'
                     }`}
                     title={isCamOn ? 'Video Active' : 'Video Off'}
                   >
@@ -221,6 +225,23 @@ export const LiveParticipantsPanel = ({
                       <Video className="w-3.5 h-3.5" />
                     )}
                   </span>
+
+                  {!isLocal && onDirectMessage && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onDirectMessage({
+                          identity: participant.identity,
+                          name: participant.name || participant.identity,
+                        })
+                      }
+                      className="p-1 rounded-md text-relay-400 hover:text-white hover:bg-relay-800 transition-colors"
+                      title={`Send direct message to ${participant.name || 'participant'}`}
+                      aria-label={`Send direct message to ${participant.name || 'participant'}`}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-relay-300 hover:text-brand-light" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -289,7 +310,9 @@ export const LiveParticipantsPanel = ({
                   {(micRequestStatus || cameraRequestStatus) && (
                     <div className="flex items-center gap-2 text-[10px] text-relay-400">
                       {micRequestStatus && (
-                        <span>Mic: {REQUEST_STATUS_LABEL[micRequestStatus] || micRequestStatus}</span>
+                        <span>
+                          Mic: {REQUEST_STATUS_LABEL[micRequestStatus] || micRequestStatus}
+                        </span>
                       )}
                       {cameraRequestStatus && (
                         <span>

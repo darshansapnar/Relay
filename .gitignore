@@ -3,7 +3,7 @@ node_modules/
 .pnp
 .pnp.js
 
-# Environment variables
+# Environment variables & local tooling
 .env
 .env.*
 *.env
@@ -11,6 +11,7 @@ node_modules/
 **/.env.*
 !.env.example
 !**/.env.example
+.neon
 
 # Production build outputs
 dist/

@@ -95,3 +95,28 @@ describe('LiveMeetingControls recording control', () => {
     expect(onStop).toHaveBeenCalled();
   });
 });
+
+describe('LiveMeetingControls chat toggle and unread indicators', () => {
+  it('calls onTogglePanel with "chat" when clicked', () => {
+    const onToggle = vi.fn();
+    render(<LiveMeetingControls {...baseProps} onTogglePanel={onToggle} />);
+    const chatBtn = screen.getByLabelText('Toggle chat panel');
+    expect(chatBtn).toBeTruthy();
+    fireEvent.click(chatBtn);
+    expect(onToggle).toHaveBeenCalledWith('chat');
+  });
+
+  it('renders general unread badge count when unreadCount > 0', () => {
+    render(<LiveMeetingControls {...baseProps} unreadCount={5} />);
+    const badge = screen.getByTestId('unread-badge');
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toBe('5');
+  });
+
+  it('renders priority unread badge when unreadPrivateCount > 0', () => {
+    render(<LiveMeetingControls {...baseProps} unreadCount={3} unreadPrivateCount={2} />);
+    const privateBadge = screen.getByTestId('unread-private-badge');
+    expect(privateBadge).toBeTruthy();
+    expect(privateBadge.textContent).toBe('2');
+  });
+});

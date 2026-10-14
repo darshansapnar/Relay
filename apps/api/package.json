@@ -15,10 +15,13 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "livekit-server-sdk": "^2.19.1",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "pg": "^8.23.1",
+    "socket.io": "^4.8.4"
   },
   "license": "MIT",
   "devDependencies": {
+    "socket.io-client": "^4.8.4",
     "vitest": "^5.0.4"
   }
 }

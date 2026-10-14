@@ -67,6 +67,54 @@ export const httpError = (statusCode, message) => {
  * scoped to this specific room. This is the baseline proof of "I am a real
  * participant in this room", shared by every moderation/recording route
  * below; it does not by itself prove the caller is the host.
+/**
+ * Cryptographically verifies a raw LiveKit access token and asserts room scope.
+ *
+ * @param {string} token - LiveKit JWT token
+ * @param {string} [expectedRoomName] - If provided, asserts token is scoped to this room
+ * @returns {Promise<{ identity: string, name: string, roomName: string, isHost: boolean, claims: object }>}
+ */
+export const verifyRawToken = async (token, expectedRoomName) => {
+  if (!token || typeof token !== 'string') {
+    throw httpError(401, 'Missing or malformed access token.');
+  }
+
+  let claims;
+  try {
+    claims = await getTokenVerifier().verify(token);
+  } catch {
+    throw httpError(401, 'Invalid or expired access token.');
+  }
+
+  const identity = claims.sub;
+  if (!identity) {
+    throw httpError(401, 'Access token is missing a participant identity.');
+  }
+
+  const roomName = claims.video?.room;
+  if (expectedRoomName && roomName !== expectedRoomName) {
+    throw httpError(403, 'This access token is not scoped to the requested room.');
+  }
+
+  const isHost =
+    claims.attributes?.role === 'host' ||
+    (typeof claims.metadata === 'string' && claims.metadata.includes('host'));
+
+  return {
+    identity,
+    name: claims.name || identity,
+    roomName: roomName || expectedRoomName,
+    isHost: Boolean(isHost),
+    claims,
+  };
+};
+
+/**
+ * Verifies that the caller presented -- via `Authorization: Bearer <token>`
+ * -- a LiveKit access token our backend actually minted (signature check),
+ * scoped to this specific room. This is the baseline proof of "I am a real
+ * participant in this room", shared by every moderation/recording route
+ * below; it does not by itself prove the caller is the host.
  *
  * Returns `{ identity, name }` for the verified requester on success, or
  * throws an Error with a `.statusCode` (401/403) describing why
@@ -79,22 +127,7 @@ export const verifyParticipantToken = async (req, roomName) => {
     throw httpError(401, 'Missing or malformed Authorization header.');
   }
 
-  let claims;
-  try {
-    claims = await getTokenVerifier().verify(token);
-  } catch {
-    throw httpError(401, 'Invalid or expired access token.');
-  }
-
-  const requesterIdentity = claims.sub;
-  if (!requesterIdentity) {
-    throw httpError(401, 'Access token is missing a participant identity.');
-  }
-  if (claims.video?.room !== roomName) {
-    throw httpError(403, 'This access token is not scoped to the requested room.');
-  }
-
-  return { identity: requesterIdentity, name: claims.name || requesterIdentity };
+  return verifyRawToken(token, roomName);
 };
 
 /**

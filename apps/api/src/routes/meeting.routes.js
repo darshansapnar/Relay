@@ -7,10 +7,20 @@ import {
   endMeetingForEveryone,
 } from '../controllers/host.controller.js';
 
+import chatRoutes from './chat.routes.js';
+import aiRoutes from './ai.routes.js';
+
 const router = Router();
 
 // POST /api/meetings/token
 router.post('/token', createMeetingToken);
+
+// Meeting chat messages (Everyone and Private)
+router.use('/:roomName/messages', chatRoutes);
+
+// AI Assistant endpoints (state, transcripts, summaries, audio, toggle)
+router.use('/', aiRoutes);
+
 
 // Host-only moderation actions. Each verifies the caller's own LiveKit
 // access token server-side (see services/livekitAdmin.js) -- the UI only

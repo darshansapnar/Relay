@@ -13,6 +13,9 @@ import { LiveParticipantGrid } from './LiveParticipantGrid.jsx';
 import { LiveMeetingControls } from './LiveMeetingControls.jsx';
 import { LiveParticipantsPanel } from './LiveParticipantsPanel.jsx';
 import { AssistantPanel } from './AssistantPanel.jsx';
+import { useAIAssistant } from '../../hooks/useAIAssistant.js';
+import { ChatPanel } from './ChatPanel.jsx';
+import { useChat } from '../../hooks/useChat.js';
 import { LeaveMeetingDialog } from './LeaveMeetingDialog.jsx';
 import { MediaDeviceWarningBanner } from './MediaDeviceWarningBanner.jsx';
 import { HostRequestPrompt } from './HostRequestPrompt.jsx';
@@ -66,9 +69,41 @@ function MeetingRoomInner({
   // from array position or display name.
   const isHost = localParticipant?.attributes?.role === 'host';
 
-  const [activePanel, setActivePanel] = useState(null); // 'participants' | 'assistant' | null
+  const [activePanel, setActivePanel] = useState(null); // 'participants' | 'assistant' | 'chat' | null
+  const [preselectedChatRecipient, setPreselectedChatRecipient] = useState(null);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+
+  // In-meeting real-time chat with Socket.IO and LiveKit token authentication
+  const {
+    messages: chatMessages,
+    isConnected: isChatConnected,
+    isConnecting: isChatConnecting,
+    connectionError: chatConnectionError,
+    unreadCount: chatUnreadCount,
+    unreadPrivateCount: chatUnreadPrivateCount,
+    unreadByPeer: chatUnreadByPeer,
+    hasMore: chatHasMore,
+    isLoadingOlder: chatIsLoadingOlder,
+    loadOlderMessages: chatLoadOlderMessages,
+    markConversationRead: chatMarkConversationRead,
+    sendMessage: sendChatMessage,
+  } = useChat({
+    token,
+    roomName: room?.name || roomName,
+    isPanelOpen: activePanel === 'chat',
+    localParticipantIdentity: localParticipant?.identity,
+  });
+
+  const ai = useAIAssistant({
+    token,
+    roomName: room?.name || roomName,
+    isHost,
+    localParticipant,
+    participants,
+    room,
+  });
+
 
   // A request currently awaiting THIS participant's response (host asked
   // them to unmute / turn camera on), and per-identity+action status for the
@@ -604,9 +639,48 @@ function MeetingRoomInner({
           roomName={room?.name}
           requestStatusByKey={requestStatusByKey}
           onSendRequest={sendHostRequest}
+          onDirectMessage={participant => {
+            setPreselectedChatRecipient(participant);
+            setActivePanel('chat');
+          }}
         />
 
-        <AssistantPanel isOpen={activePanel === 'assistant'} onClose={() => setActivePanel(null)} />
+        <AssistantPanel
+          isOpen={activePanel === 'assistant'}
+          onClose={() => setActivePanel(null)}
+          isActive={ai.isActive}
+          consentGranted={ai.consentGranted}
+          transcriptionStatus={ai.transcriptionStatus}
+          summaryStatus={ai.summaryStatus}
+          pauseReason={ai.pauseReason}
+          transcriptionPauseReason={ai.transcriptionPauseReason}
+          transcripts={ai.transcripts}
+          latestSummary={ai.latestSummary}
+          isGeneratingSummary={ai.isGeneratingSummary}
+          audioStreamingActive={ai.audioStreamingActive}
+          onToggleAI={ai.toggleAI}
+          onTriggerSummary={ai.triggerSummary}
+          isHost={isHost}
+        />
+
+        <ChatPanel
+          isOpen={activePanel === 'chat'}
+          onClose={() => setActivePanel(null)}
+          messages={chatMessages}
+          sendMessage={sendChatMessage}
+          isConnected={isChatConnected}
+          isConnecting={isChatConnecting}
+          connectionError={chatConnectionError}
+          preselectedRecipient={preselectedChatRecipient}
+          onClearPreselectedRecipient={() => setPreselectedChatRecipient(null)}
+          hasMore={chatHasMore}
+          isLoadingOlder={chatIsLoadingOlder}
+          loadOlderMessages={chatLoadOlderMessages}
+          unreadByPeer={chatUnreadByPeer}
+          unreadCount={chatUnreadCount}
+          unreadPrivateCount={chatUnreadPrivateCount}
+          markConversationRead={chatMarkConversationRead}
+        />
       </div>
 
       {/* Bottom Meeting Controls */}
@@ -623,6 +697,9 @@ function MeetingRoomInner({
         onStartRecordingClick={handleOpenRecordingConsent}
         onStopRecordingClick={() => handleStopRecording()}
         stoppingRecording={stoppingRecording}
+        unreadCount={chatUnreadCount}
+        unreadPrivateCount={chatUnreadPrivateCount}
+        isAIActive={ai.isActive}
       />
 
       {/* Leave Meeting Confirmation Dialog */}

@@ -3,11 +3,17 @@ import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
 import { KeyRound, Info, ArrowRight, User } from 'lucide-react';
 
-export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom }) => {
-  const [meetingCode, setMeetingCode] = useState('rel-product-sync');
+export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = '' }) => {
+  const [meetingCode, setMeetingCode] = useState(initialCode || 'rel-product-sync');
   const [displayName, setDisplayName] = useState(
     () => localStorage.getItem('relay_displayName') || 'Guest Participant'
   );
+
+  React.useEffect(() => {
+    if (isOpen && initialCode) {
+      setMeetingCode(initialCode);
+    }
+  }, [isOpen, initialCode]);
 
   const handleJoin = e => {
     e.preventDefault();

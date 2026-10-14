@@ -28,7 +28,9 @@ describe('decodeRecordingMessage', () => {
   });
 
   it('ignores a message from a different protocol sharing the same data channel', () => {
-    const payload = new TextEncoder().encode(JSON.stringify({ type: 'relay:request', action: 'unmute' }));
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ type: 'relay:request', action: 'unmute' })
+    );
     const decoded = decodeRecordingMessage(payload);
     expect(isConsentDeclineMessage(decoded)).toBe(false);
   });

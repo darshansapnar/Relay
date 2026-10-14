@@ -12,6 +12,7 @@ import {
   PhoneOff,
   Disc,
   Square,
+  MessageSquare,
 } from 'lucide-react';
 import { MoreOptionsMenu } from './MoreOptionsMenu.jsx';
 import { LOCAL_RECORDING_STATUS, isActiveRecordingStatus } from '../../utils/recordingProtocol.js';
@@ -29,6 +30,9 @@ export const LiveMeetingControls = ({
   onStartRecordingClick,
   onStopRecordingClick,
   stoppingRecording = false,
+  unreadCount = 0,
+  unreadPrivateCount = 0,
+  isAIActive = false,
 }) => {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant();
@@ -231,6 +235,42 @@ export const LiveMeetingControls = ({
 
       {/* Right Panels & Options */}
       <div className="relative flex items-center justify-end gap-2 w-auto md:w-48">
+        {/* In-Meeting Chat Panel Toggle */}
+        <button
+          type="button"
+          onClick={() => onTogglePanel('chat')}
+          aria-label="Toggle chat panel"
+          className={`relative p-3 rounded-2xl border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand ${
+            activePanel === 'chat'
+              ? 'bg-brand text-white border-brand shadow-glow-brand'
+              : 'bg-relay-850 border-relay-700/80 text-relay-300 hover:text-white hover:bg-relay-800'
+          }`}
+          title={
+            unreadPrivateCount > 0
+              ? `Chat (${unreadPrivateCount} unread direct message${unreadPrivateCount > 1 ? 's' : ''})`
+              : unreadCount > 0
+                ? `Chat (${unreadCount} unread message${unreadCount > 1 ? 's' : ''})`
+                : 'Meeting Chat'
+          }
+        >
+          <MessageSquare className="w-5 h-5" />
+          {unreadPrivateCount > 0 ? (
+            <span
+              data-testid="unread-private-badge"
+              className="absolute -top-1 -right-1 px-1 min-w-4 h-4 bg-amber-500 text-[10px] font-bold text-relay-950 rounded-full flex items-center justify-center border border-relay-900 shadow-sm animate-pulse"
+            >
+              {unreadPrivateCount}
+            </span>
+          ) : unreadCount > 0 ? (
+            <span
+              data-testid="unread-badge"
+              className="absolute -top-1 -right-1 px-1 min-w-4 h-4 bg-brand text-[10px] font-semibold text-white rounded-full flex items-center justify-center border border-relay-900 shadow-sm"
+            >
+              {unreadCount}
+            </span>
+          ) : null}
+        </button>
+
         {/* Participants Panel Toggle */}
         <button
           type="button"
@@ -251,6 +291,7 @@ export const LiveMeetingControls = ({
 
         {/* AI Assistant Panel Toggle */}
         <button
+          id="open-assistant-panel-btn"
           type="button"
           onClick={() => onTogglePanel('assistant')}
           aria-label="Toggle AI assistant panel"
@@ -259,11 +300,19 @@ export const LiveMeetingControls = ({
               ? 'bg-ai text-white border-ai shadow-glow-ai'
               : 'bg-relay-850 border-relay-700/80 text-relay-300 hover:text-white hover:bg-relay-800'
           }`}
-          title="Relay AI Assistant Copilot"
+          title={isAIActive ? 'Relay AI Assistant Copilot (Active)' : 'Relay AI Assistant Copilot'}
         >
-          <Sparkles className="w-5 h-5 text-ai-accent" />
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-ai rounded-full ring-2 ring-relay-950 animate-pulse" />
+          <Sparkles className={`w-5 h-5 ${isAIActive ? 'text-ai-accent' : 'text-relay-400'}`} />
+          {isAIActive ? (
+            <span
+              data-testid="ai-active-indicator"
+              className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-relay-950 animate-pulse"
+            />
+          ) : (
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-relay-600 rounded-full ring-2 ring-relay-950" />
+          )}
         </button>
+
 
         {/* More Options Dropdown Toggle */}
         <div className="relative">
