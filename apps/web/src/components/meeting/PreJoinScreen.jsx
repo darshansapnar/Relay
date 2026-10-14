@@ -22,18 +22,23 @@ export const PreJoinScreen = ({
   error = null,
   onRetry,
 }) => {
-  const [displayName, setDisplayName] = useState(
-    initialName || localStorage.getItem('relay_displayName') || 'Alex Rivers'
-  );
+  const [displayName, setDisplayName] = useState(initialName || '');
+  const [validationError, setValidationError] = useState('');
   const [micEnabled, setMicEnabled] = useState(true);
   const [camEnabled, setCamEnabled] = useState(true);
 
   const handleSubmit = e => {
     e.preventDefault();
-    if (!displayName.trim() || loading) return;
-    localStorage.setItem('relay_displayName', displayName.trim());
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      setValidationError('Please enter your display name to join.');
+      return;
+    }
+    if (loading) return;
+    setValidationError('');
+    localStorage.setItem('relay_displayName', trimmed);
     onJoin({
-      displayName: displayName.trim(),
+      displayName: trimmed,
       audio: micEnabled,
       video: camEnabled,
     });
@@ -96,16 +101,26 @@ export const PreJoinScreen = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          {validationError && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-950/40 border border-red-800/70 text-red-300 text-xs animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{validationError}</span>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-relay-300 mb-1.5">
-              Your Display Name
+              Your Display Name <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
               required
               value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="e.g. Sarah Connor"
+              onChange={e => {
+                setDisplayName(e.target.value);
+                if (validationError) setValidationError('');
+              }}
+              placeholder="Enter your name"
               className="w-full px-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium"
             />
           </div>

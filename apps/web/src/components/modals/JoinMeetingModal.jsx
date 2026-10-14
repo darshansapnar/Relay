@@ -1,27 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
-import { KeyRound, Info, ArrowRight, User } from 'lucide-react';
+import { KeyRound, Info, ArrowRight, User, AlertCircle } from 'lucide-react';
 
 export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = '' }) => {
-  const [meetingCode, setMeetingCode] = useState(initialCode || 'rel-product-sync');
-  const [displayName, setDisplayName] = useState(
-    () => localStorage.getItem('relay_displayName') || 'Guest Participant'
-  );
+  const [meetingCode, setMeetingCode] = useState(initialCode || '');
+  const [displayName, setDisplayName] = useState('');
+  const [error, setError] = useState('');
 
-  React.useEffect(() => {
-    if (isOpen && initialCode) {
-      setMeetingCode(initialCode);
+  // Reset fields to empty when dialog opens (or sync initialCode if provided from quick join)
+  useEffect(() => {
+    if (isOpen) {
+      setMeetingCode(initialCode || '');
+      setDisplayName('');
+      setError('');
     }
   }, [isOpen, initialCode]);
 
   const handleJoin = e => {
     e.preventDefault();
-    if (!meetingCode.trim()) return;
-    if (displayName.trim()) {
-      localStorage.setItem('relay_displayName', displayName.trim());
+    const trimmedCode = meetingCode.trim();
+    const trimmedName = displayName.trim();
+
+    if (!trimmedCode && !trimmedName) {
+      setError('Please enter a meeting code and your display name.');
+      return;
     }
-    onJoinRoom(meetingCode.trim(), displayName.trim() || 'Guest');
+    if (!trimmedCode) {
+      setError('Please enter a meeting code or room ID.');
+      return;
+    }
+    if (!trimmedName) {
+      setError('Please enter your display name.');
+      return;
+    }
+
+    setError('');
+    localStorage.setItem('relay_displayName', trimmedName);
+    onJoinRoom(trimmedCode, trimmedName);
   };
 
   return (
@@ -42,20 +58,31 @@ export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = ''
           </div>
         </div>
 
+        {/* Validation Error Message */}
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-950/40 border border-red-800/70 text-red-300 text-xs animate-in fade-in">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Meeting Code Input */}
         <div>
           <label className="block text-xs font-medium text-relay-300 mb-1.5">
-            Meeting Code or Room ID
+            Meeting Code or Room ID <span className="text-red-400">*</span>
           </label>
           <div className="relative">
             <KeyRound className="w-4 h-4 text-relay-400 absolute left-3 top-3 pointer-events-none" />
             <input
               type="text"
               value={meetingCode}
-              onChange={e => setMeetingCode(e.target.value)}
-              placeholder="e.g. rel-product-sync"
+              onChange={e => {
+                setMeetingCode(e.target.value);
+                if (error) setError('');
+              }}
+              placeholder="Enter meeting code or room ID"
               required
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-400 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-mono"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-mono"
             />
           </div>
         </div>
@@ -63,7 +90,7 @@ export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = ''
         {/* Display Name Input */}
         <div>
           <label className="block text-xs font-medium text-relay-300 mb-1.5">
-            Your Display Name
+            Your Display Name <span className="text-red-400">*</span>
           </label>
           <div className="relative">
             <User className="w-4 h-4 text-relay-400 absolute left-3 top-3 pointer-events-none" />
@@ -71,14 +98,17 @@ export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = ''
               type="text"
               required
               value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="e.g. Sarah Connor"
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-400 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              onChange={e => {
+                setDisplayName(e.target.value);
+                if (error) setError('');
+              }}
+              placeholder="Enter your name"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             />
           </div>
         </div>
 
-        {/* Quick Suggested Rooms */}
+        {/* Quick Suggested Rooms (Optional shortcuts that fill only the meeting code field) */}
         <div>
           <label className="block text-[11px] font-medium text-relay-400 mb-1.5">
             Sample Rooms:
@@ -88,7 +118,10 @@ export const JoinMeetingModal = ({ isOpen, onClose, onJoinRoom, initialCode = ''
               <button
                 key={room}
                 type="button"
-                onClick={() => setMeetingCode(room)}
+                onClick={() => {
+                  setMeetingCode(room);
+                  if (error) setError('');
+                }}
                 className={`px-2.5 py-1 rounded text-xs font-mono border transition-colors ${
                   meetingCode === room
                     ? 'bg-brand/20 border-brand text-brand-light'

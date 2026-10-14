@@ -1,22 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
-import { Sparkles, Shield, Info, ArrowRight, User } from 'lucide-react';
+import { Sparkles, Shield, Info, ArrowRight, User, KeyRound, AlertCircle } from 'lucide-react';
 
 export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
-  const [meetingTitle, setMeetingTitle] = useState('Sprint Architecture Review');
-  const [displayName, setDisplayName] = useState(
-    () => localStorage.getItem('relay_displayName') || 'Alex Rivers'
-  );
+  const [roomId, setRoomId] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [meetingTitle, setMeetingTitle] = useState('');
   const [enableAssistant, setEnableAssistant] = useState(true);
-  const [demoRoomId] = useState(() => `rel-room-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [error, setError] = useState('');
+
+  // Reset all fields to empty when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setRoomId('');
+      setDisplayName('');
+      setMeetingTitle('');
+      setError('');
+    }
+  }, [isOpen]);
 
   const handleCreate = e => {
     e.preventDefault();
-    if (displayName.trim()) {
-      localStorage.setItem('relay_displayName', displayName.trim());
+    const trimmedRoom = roomId.trim();
+    const trimmedName = displayName.trim();
+
+    if (!trimmedRoom && !trimmedName) {
+      setError('Please enter a room ID and your display name.');
+      return;
     }
-    onCreateRoom(demoRoomId, displayName.trim() || 'Host User');
+    if (!trimmedRoom) {
+      setError('Please enter a meeting code or room ID.');
+      return;
+    }
+    if (!trimmedName) {
+      setError('Please enter your display name.');
+      return;
+    }
+
+    setError('');
+    localStorage.setItem('relay_displayName', trimmedName);
+    onCreateRoom(trimmedRoom, trimmedName);
   };
 
   return (
@@ -37,10 +61,39 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
           </div>
         </div>
 
+        {/* Validation Error Message */}
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-950/40 border border-red-800/70 text-red-300 text-xs animate-in fade-in">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Meeting Code / Room ID Input */}
+        <div>
+          <label className="block text-xs font-medium text-relay-300 mb-1.5">
+            Meeting Code / Room ID <span className="text-red-400">*</span>
+          </label>
+          <div className="relative">
+            <KeyRound className="w-4 h-4 text-relay-400 absolute left-3 top-3 pointer-events-none" />
+            <input
+              type="text"
+              required
+              value={roomId}
+              onChange={e => {
+                setRoomId(e.target.value);
+                if (error) setError('');
+              }}
+              placeholder="Enter room ID (e.g. sprint-review)"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-mono"
+            />
+          </div>
+        </div>
+
         {/* Display Name Input */}
         <div>
           <label className="block text-xs font-medium text-relay-300 mb-1.5">
-            Your Display Name
+            Your Display Name <span className="text-red-400">*</span>
           </label>
           <div className="relative">
             <User className="w-4 h-4 text-relay-400 absolute left-3 top-3 pointer-events-none" />
@@ -48,32 +101,28 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
               type="text"
               required
               value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="e.g. Alex Rivers"
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-400 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              onChange={e => {
+                setDisplayName(e.target.value);
+                if (error) setError('');
+              }}
+              placeholder="Enter your name"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             />
           </div>
         </div>
 
-        {/* Meeting Title Input */}
+        {/* Meeting Title Input (Optional) */}
         <div>
-          <label className="block text-xs font-medium text-relay-300 mb-1.5">Meeting Subject</label>
+          <label className="block text-xs font-medium text-relay-300 mb-1.5">
+            Meeting Subject <span className="text-relay-500 text-[11px]">(optional)</span>
+          </label>
           <input
             type="text"
             value={meetingTitle}
             onChange={e => setMeetingTitle(e.target.value)}
-            placeholder="e.g. Weekly Executive Review"
-            className="w-full px-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-400 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            required
+            placeholder="e.g. Architecture Review"
+            className="w-full px-3.5 py-2.5 rounded-lg bg-relay-800 border border-relay-700 text-white placeholder-relay-500 text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
-        </div>
-
-        {/* Generated Room ID pill */}
-        <div className="p-3 rounded-lg bg-relay-800/80 border border-relay-700/80 flex items-center justify-between text-xs">
-          <span className="text-relay-400">Room Identifier:</span>
-          <span className="font-mono text-brand-light font-semibold bg-brand/15 px-2 py-0.5 rounded border border-brand/30">
-            {demoRoomId}
-          </span>
         </div>
 
         {/* Feature toggles */}
@@ -84,7 +133,7 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
               <div>
                 <div className="text-xs font-medium text-white">AI Assistant Copilot</div>
                 <div className="text-[11px] text-relay-400">
-                  Ready for live synthesis in Phase 4
+                  Ready for live synthesis and structured summaries
                 </div>
               </div>
             </div>
