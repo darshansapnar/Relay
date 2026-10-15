@@ -16,11 +16,24 @@ export const createApp = () => {
     'http://127.0.0.1:5173',
   ].filter(Boolean);
 
+  const isOriginAllowed = origin => {
+    if (!origin) return true;
+    if (config.clientUrl === '*' || allowedOrigins.includes(origin)) return true;
+    try {
+      const hostname = new URL(origin).hostname;
+      if (hostname === 'localhost' || hostname.endsWith('.vercel.app')) {
+        return true;
+      }
+    } catch {
+      // ignore parse error
+    }
+    return false;
+  };
+
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. mobile apps, curl, Postman)
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (isOriginAllowed(origin)) {
           return callback(null, true);
         }
         return callback(new Error(`Origin ${origin} not allowed by CORS`));

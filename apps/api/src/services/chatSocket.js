@@ -40,10 +40,24 @@ export const setupChatSocket = (httpServer, customOptions = {}) => {
     'http://127.0.0.1:5173',
   ].filter(Boolean);
 
+  const isOriginAllowed = origin => {
+    if (!origin) return true;
+    if (config.clientUrl === '*' || allowedOrigins.includes(origin)) return true;
+    try {
+      const hostname = new URL(origin).hostname;
+      if (hostname === 'localhost' || hostname.endsWith('.vercel.app')) {
+        return true;
+      }
+    } catch {
+      // ignore parse error
+    }
+    return false;
+  };
+
   const io = new SocketIOServer(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (isOriginAllowed(origin)) {
           return callback(null, true);
         }
         return callback(null, false);
