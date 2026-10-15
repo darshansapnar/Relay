@@ -148,7 +148,10 @@ export const useChat = ({
     loadHistory();
 
     // Connect Socket.IO
-    const socket = io('/', {
+    const socketBaseUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '').replace(/\/$/, '')
+      : '/';
+    const socket = io(socketBaseUrl, {
       auth: { token, roomName },
       transports: ['websocket', 'polling'],
       reconnection: true,

@@ -1,3 +1,9 @@
+const getApiBaseUrl = () => {
+  if (import.meta.env.DEV) return '';
+  const url = import.meta.env.VITE_API_URL || '';
+  return url.replace(/\/api\/?$/, '').replace(/\/$/, '');
+};
+
 async function parseJsonResponse(response) {
   const data = await response.json().catch(() => ({}));
 
@@ -18,7 +24,7 @@ async function parseJsonResponse(response) {
  */
 export async function requestMeetingToken(roomName, participantName, options = {}) {
   const { waitingRoomEnabled = false, participantIdentity } = options;
-  const response = await fetch('/api/meetings/token', {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -44,7 +50,7 @@ export async function requestMeetingToken(roomName, participantName, options = {
  */
 export async function muteParticipant(roomName, identity, muted, hostToken) {
   const response = await fetch(
-    `/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/mute`,
+    `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/mute`,
     {
       method: 'POST',
       headers: {
@@ -60,7 +66,7 @@ export async function muteParticipant(roomName, identity, muted, hostToken) {
 
 export async function setParticipantCamera(roomName, identity, disabled, hostToken) {
   const response = await fetch(
-    `/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/camera`,
+    `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/camera`,
     {
       method: 'POST',
       headers: {
@@ -76,7 +82,7 @@ export async function setParticipantCamera(roomName, identity, disabled, hostTok
 
 export async function removeParticipant(roomName, identity, hostToken) {
   const response = await fetch(
-    `/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/remove`,
+    `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(identity)}/remove`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${hostToken}` },
@@ -87,7 +93,7 @@ export async function removeParticipant(roomName, identity, hostToken) {
 }
 
 export async function endMeeting(roomName, hostToken) {
-  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/end`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/end`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${hostToken}` },
   });
@@ -99,7 +105,7 @@ export async function endMeeting(roomName, hostToken) {
  * Access Control APIs
  */
 export async function lockMeeting(roomName, locked, hostToken) {
-  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/lock`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/lock`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,7 +118,7 @@ export async function lockMeeting(roomName, locked, hostToken) {
 }
 
 export async function getMeetingAccessState(roomName, token) {
-  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/access-state`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/access-state`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -123,7 +129,7 @@ export async function getMeetingAccessState(roomName, token) {
 }
 
 export async function getWaitingParticipants(roomName, hostToken) {
-  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/waiting-room`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/waiting-room`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${hostToken}`,
@@ -135,7 +141,7 @@ export async function getWaitingParticipants(roomName, hostToken) {
 
 export async function admitWaitingParticipant(roomName, identity, hostToken) {
   const response = await fetch(
-    `/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/admit`,
+    `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/admit`,
     {
       method: 'POST',
       headers: {
@@ -149,7 +155,7 @@ export async function admitWaitingParticipant(roomName, identity, hostToken) {
 
 export async function rejectWaitingParticipant(roomName, identity, hostToken) {
   const response = await fetch(
-    `/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/reject`,
+    `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/reject`,
     {
       method: 'POST',
       headers: {

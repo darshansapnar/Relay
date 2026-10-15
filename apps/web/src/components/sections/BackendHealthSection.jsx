@@ -12,7 +12,10 @@ export const BackendHealthSection = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/health');
+      const baseUrl = import.meta.env.VITE_API_URL
+        ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '').replace(/\/$/, '')
+        : '';
+      const res = await fetch(`${baseUrl}/api/health`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }

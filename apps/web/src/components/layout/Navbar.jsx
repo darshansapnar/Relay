@@ -7,8 +7,10 @@ export const Navbar = ({ onCreateMeeting, onJoinMeeting }) => {
   const [apiStatus, setApiStatus] = useState('checking'); // 'checking', 'online', 'offline'
 
   useEffect(() => {
-    // Check backend health status quietly
-    fetch('/api/health')
+    const baseUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '').replace(/\/$/, '')
+      : '';
+    fetch(`${baseUrl}/api/health`)
       .then(res => {
         if (res.ok) return res.json();
         throw new Error('API unreachable');

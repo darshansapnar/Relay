@@ -1,3 +1,9 @@
+const getApiBaseUrl = () => {
+  if (import.meta.env.DEV) return '';
+  const url = import.meta.env.VITE_API_URL || '';
+  return url.replace(/\/api\/?$/, '').replace(/\/$/, '');
+};
+
 async function parseJsonResponse(response) {
   const data = await response.json().catch(() => ({}));
 
@@ -30,7 +36,7 @@ export async function fetchMeetingMessages(roomName, token, params = {}) {
   if (params.peerIdentity) query.set('peerIdentity', params.peerIdentity);
 
   const qs = query.toString();
-  const endpoint = `/api/meetings/${encodeURIComponent(roomName)}/messages${qs ? `?${qs}` : ''}`;
+  const endpoint = `${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/messages${qs ? `?${qs}` : ''}`;
 
   const response = await fetch(endpoint, {
     method: 'GET',
@@ -51,7 +57,7 @@ export async function fetchMeetingMessages(roomName, token, params = {}) {
  * @returns {Promise<{ success: boolean, message: object }>}
  */
 export async function sendMeetingMessageRest(roomName, token, payload) {
-  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/messages`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomName)}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

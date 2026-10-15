@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://relay-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "https://relay-api.onrender.com/socket.io/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
