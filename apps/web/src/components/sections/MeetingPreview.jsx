@@ -91,7 +91,7 @@ export const MeetingPreview = () => {
                   {/* Tile Footer */}
                   <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between text-xs">
                     <span className="font-medium text-white flex items-center gap-1.5">
-                      Alex Morgan <span className="text-relay-400 text-[10px]">(Tech Lead)</span>
+                      Aditya Mehta <span className="text-relay-400 text-[10px]">(Tech Lead)</span>
                     </span>
                     <span className="p-1 rounded bg-relay-800/90 text-emerald-400">
                       <Mic className="w-3.5 h-3.5" />
@@ -120,7 +120,7 @@ export const MeetingPreview = () => {
                     MV
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between text-xs">
-                    <span className="font-medium text-white">Marcus Vance</span>
+                    <span className="font-medium text-white">Manish Verma</span>
                     <span className="p-1 rounded bg-relay-800/90 text-emerald-400">
                       <Mic className="w-3.5 h-3.5" />
                     </span>
@@ -297,7 +297,7 @@ export const MeetingPreview = () => {
                         <ul className="space-y-1.5 text-relay-300">
                           <li className="flex items-start gap-1.5">
                             <span className="text-brand-light mt-0.5">•</span>
-                            <span>Alex confirmed sub-100ms audio latency benchmark target.</span>
+                            <span>Aditya confirmed sub-100ms audio latency benchmark target.</span>
                           </li>
                           <li className="flex items-start gap-1.5">
                             <span className="text-brand-light mt-0.5">•</span>
@@ -346,7 +346,7 @@ export const MeetingPreview = () => {
                             Plan LiveKit SFU integration (Phase 2)
                           </p>
                           <p className="text-[10px] text-relay-400 mt-0.5">
-                            Assigned: Alex Morgan • Next Milestone
+                            Assigned: Aditya Mehta • Next Milestone
                           </p>
                         </div>
                       </div>
@@ -357,7 +357,7 @@ export const MeetingPreview = () => {
                     <div className="space-y-3 font-mono text-[11px]">
                       <div>
                         <span className="text-brand-light font-sans font-semibold">
-                          Alex Morgan
+                          Aditya Mehta
                         </span>
                         <span className="text-relay-500 ml-2">10:14:02 AM</span>
                         <p className="text-relay-300 mt-0.5 font-sans">

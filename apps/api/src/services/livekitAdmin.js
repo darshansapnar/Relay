@@ -147,13 +147,29 @@ export const verifyParticipantToken = async (req, roomName) => {
 export const authorizeHostRequest = async (req, roomName) => {
   const requester = await verifyParticipantToken(req, roomName);
 
-  const rooms = await getRoomServiceClient().listRooms([roomName]);
-  if (rooms.length === 0) {
+  let hostIdentity = null;
+  try {
+    const rooms = await getRoomServiceClient().listRooms([roomName]);
+    if (rooms.length > 0) {
+      hostIdentity = parseRoomMetadata(rooms[0].metadata).hostIdentity;
+    }
+  } catch (err) {
+    console.warn('[Relay LiveKit] listRooms notice in authorizeHostRequest:', err.message);
+  }
+
+  if (!hostIdentity) {
+    const { accessControlService } = await import('./accessControlService.js');
+    const accessState = await accessControlService.getAccessState(roomName).catch(() => null);
+    if (accessState?.hostIdentity) {
+      hostIdentity = accessState.hostIdentity;
+    }
+  }
+
+  if (!hostIdentity) {
     throw httpError(404, 'Room not found.');
   }
 
-  const { hostIdentity } = parseRoomMetadata(rooms[0].metadata);
-  if (!hostIdentity || hostIdentity !== requester.identity) {
+  if (hostIdentity !== requester.identity) {
     throw httpError(403, 'Only the meeting host can perform this action.');
   }
 

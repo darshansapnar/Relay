@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
-import { Sparkles, Shield, Info, ArrowRight, User, KeyRound, AlertCircle } from 'lucide-react';
+import { Sparkles, Shield, Info, ArrowRight, User, KeyRound, AlertCircle, Users } from 'lucide-react';
 
 export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
   const [roomId, setRoomId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [meetingTitle, setMeetingTitle] = useState('');
   const [enableAssistant, setEnableAssistant] = useState(true);
+  const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
   const [error, setError] = useState('');
 
   // Reset all fields to empty when dialog opens
@@ -16,6 +17,7 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
       setRoomId('');
       setDisplayName('');
       setMeetingTitle('');
+      setWaitingRoomEnabled(false);
       setError('');
     }
   }, [isOpen]);
@@ -40,7 +42,7 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
 
     setError('');
     localStorage.setItem('relay_displayName', trimmedName);
-    onCreateRoom(trimmedRoom, trimmedName);
+    onCreateRoom(trimmedRoom, trimmedName, { waitingRoomEnabled });
   };
 
   return (
@@ -142,6 +144,25 @@ export const CreateMeetingModal = ({ isOpen, onClose, onCreateRoom }) => {
               checked={enableAssistant}
               onChange={e => setEnableAssistant(e.target.checked)}
               className="rounded bg-relay-700 border-relay-600 text-brand focus:ring-brand h-4 w-4"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded-lg bg-relay-800/60 border border-relay-700/60">
+            <div className="flex items-center gap-2.5">
+              <Users className="w-4 h-4 text-brand-light" />
+              <div>
+                <div className="text-xs font-medium text-white">Enable Waiting Room</div>
+                <div className="text-[11px] text-relay-400">
+                  Participants must wait for host approval before entering
+                </div>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              id="enable-waiting-room"
+              checked={waitingRoomEnabled}
+              onChange={e => setWaitingRoomEnabled(e.target.checked)}
+              className="rounded bg-relay-700 border-relay-600 text-brand focus:ring-brand h-4 w-4 cursor-pointer"
             />
           </div>
 

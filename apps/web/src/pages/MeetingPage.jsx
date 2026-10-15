@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { requestMeetingToken } from '../api/meetingApi.js';
 import { PreJoinScreen } from '../components/meeting/PreJoinScreen.jsx';
 import { MeetingRoomLive } from '../components/meeting/MeetingRoomLive.jsx';
+import { WaitingRoomScreen } from '../components/meeting/WaitingRoomScreen.jsx';
 
 export const MeetingPage = () => {
   const { roomId } = useParams();
@@ -13,9 +14,10 @@ export const MeetingPage = () => {
   const initialDisplayName =
     location.state?.displayName || localStorage.getItem('relay_displayName') || '';
 
-  // Meeting states: 'prejoin' | 'connecting' | 'connected' | 'error'
+  // Meeting states: 'prejoin' | 'connecting' | 'connected' | 'waiting' | 'error'
   const [meetingState, setMeetingState] = useState('prejoin');
   const [connectionData, setConnectionData] = useState(null);
+  const [waitingData, setWaitingData] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [mediaPreferences, setMediaPreferences] = useState({ audio: true, video: true });
 
@@ -26,32 +28,49 @@ export const MeetingPage = () => {
       setMediaPreferences({ audio, video });
 
       try {
-        const tokenResponse = await requestMeetingToken(roomId, displayName);
+        const reqOptions = {};
+        if (location.state?.waitingRoomEnabled) reqOptions.waitingRoomEnabled = true;
+        if (waitingData?.participantIdentity) reqOptions.participantIdentity = waitingData.participantIdentity;
+
+        const tokenResponse =
+          Object.keys(reqOptions).length > 0
+            ? await requestMeetingToken(roomId, displayName, reqOptions)
+            : await requestMeetingToken(roomId, displayName);
+
+        if (tokenResponse.waiting) {
+          setWaitingData({
+            roomName: tokenResponse.roomName,
+            participantIdentity: tokenResponse.participantIdentity,
+            participantName: tokenResponse.participantName || displayName,
+          });
+          setMeetingState('waiting');
+          return;
+        }
+
         setConnectionData({
           token: tokenResponse.token,
           serverUrl: tokenResponse.url,
-          // The backend's own sanitized room name (see
-          // apps/api/src/controllers/meeting.controller.js), not the raw
-          // :roomId URL param -- this is what every recording/moderation
-          // API call is keyed by, and it's known synchronously here rather
-          // than only after the LiveKit connection completes (see
-          // MeetingRoomLive.jsx's recording-status effect for why that
-          // distinction matters).
           roomName: tokenResponse.roomName,
+          participantIdentity: tokenResponse.participantIdentity,
+          isHost: tokenResponse.isHost,
           audio,
           video,
         });
         setMeetingState('connected');
       } catch (err) {
         console.error('Failed to obtain LiveKit meeting token:', err);
-        setErrorMessage(
-          err.message ||
-            'Unable to connect to the meeting. Please verify that the LiveKit server credentials are set in apps/api/.env.'
-        );
+        const code = err.details?.error?.code || '';
+        let msg = err.message || 'Unable to connect to the meeting.';
+        if (err.statusCode === 423 || code === 'MEETING_LOCKED') {
+          msg = 'This meeting is locked by the host. Additional participants cannot enter.';
+        } else if (err.statusCode === 403 && (code === 'REMOVED_FROM_MEETING' || msg.includes('removed'))) {
+          msg = 'You were removed from this meeting by the host and cannot rejoin.';
+        }
+        setErrorMessage(msg);
         setMeetingState('error');
       }
     },
-    [roomId]
+    [roomId, location.state?.waitingRoomEnabled, waitingData?.participantIdentity]
   );
 
   // If the user entered directly with a displayName already provided in state (from modal).
@@ -99,6 +118,24 @@ export const MeetingPage = () => {
     navigate('/');
   };
 
+  // If in waiting room awaiting host admission
+  if (meetingState === 'waiting' && waitingData) {
+    return (
+      <WaitingRoomScreen
+        roomName={waitingData.roomName}
+        participantName={waitingData.participantName}
+        participantIdentity={waitingData.participantIdentity}
+        onApproved={() => {
+          handleConnect({
+            displayName: waitingData.participantName,
+            ...mediaPreferences,
+          });
+        }}
+        onLeave={() => navigate('/')}
+      />
+    );
+  }
+
   // If connected to LiveKit room
   if (meetingState === 'connected' && connectionData) {
     return (
@@ -106,6 +143,8 @@ export const MeetingPage = () => {
         token={connectionData.token}
         serverUrl={connectionData.serverUrl}
         roomName={connectionData.roomName}
+        participantIdentity={connectionData.participantIdentity}
+        isHost={connectionData.isHost}
         audio={mediaPreferences.audio}
         video={mediaPreferences.video}
         onDisconnected={handleDisconnected}

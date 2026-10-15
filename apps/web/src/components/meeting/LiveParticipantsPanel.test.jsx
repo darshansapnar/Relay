@@ -137,7 +137,7 @@ describe('LiveParticipantsPanel host moderation controls', () => {
     );
   });
 
-  it('calls removeParticipant with the room, target identity, and host token when Remove is clicked', async () => {
+  it('calls removeParticipant with the room, target identity, and host token when Remove is clicked and confirmed', async () => {
     mockParticipants = [
       participant({
         identity: 'user_14_host',
@@ -152,7 +152,12 @@ describe('LiveParticipantsPanel host moderation controls', () => {
       <LiveParticipantsPanel isOpen onClose={() => {}} isHost token="host-tok" roomName="room1" />
     );
 
+    // Initial click opens confirmation dialog
     fireEvent.click(screen.getByText('Remove'));
+
+    // Confirm removal in modal
+    const confirmBtn = screen.getByRole('button', { name: /Remove Participant/i });
+    fireEvent.click(confirmBtn);
 
     expect(meetingApi.removeParticipant).toHaveBeenCalledWith(
       'room1',

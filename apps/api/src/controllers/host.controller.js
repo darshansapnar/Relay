@@ -1,7 +1,12 @@
 import { TrackSource } from 'livekit-server-sdk';
 import { config } from '../config/index.js';
-import { getRoomServiceClient, authorizeHostRequest } from '../services/livekitAdmin.js';
+import {
+  getRoomServiceClient,
+  authorizeHostRequest,
+  verifyParticipantToken,
+} from '../services/livekitAdmin.js';
 import { chatStore } from '../services/chatStore.js';
+import { accessControlService } from '../services/accessControlService.js';
 
 const sendAuthzError = (res, err) => {
   if (err.statusCode) {
@@ -30,15 +35,6 @@ const ALL_PUBLISHABLE_SOURCES = [
   TrackSource.SCREEN_SHARE_AUDIO,
 ];
 
-/**
- * Both a mic restriction and a camera restriction are expressed through the
- * same `canPublishSources` allow-list, and LiveKit's updateParticipant
- * replaces that list atomically (it does not merge with what's already
- * there -- see the SDK's own doc comment on UpdateParticipantOptions). So
- * every write here must start from the target's *current* restriction state
- * for the other track, not just the one being changed, or e.g. muting
- * someone's mic would silently also lift an existing camera restriction.
- */
 export const computeAllowedSources = ({ micDisabled, cameraDisabled }) =>
   ALL_PUBLISHABLE_SOURCES.filter(source => {
     if (micDisabled && source === TrackSource.MICROPHONE) return false;
@@ -48,13 +44,6 @@ export const computeAllowedSources = ({ micDisabled, cameraDisabled }) =>
 
 const boolAttr = value => value === 'true';
 
-/**
- * Looks up a participant in the room and applies a host-controlled
- * restriction to one of their track sources: mutes/unmutes their current
- * published track of that kind (if any) and persists the publish
- * restriction via canPublishSources, preserving whatever restriction
- * already applies to their *other* track kind.
- */
 const applyHostTrackRestriction = async ({ roomService, roomName, identity, source, disabled }) => {
   const participants = await roomService.listParticipants(roomName);
   const target = participants.find(p => p.identity === identity);
@@ -90,16 +79,6 @@ const applyHostTrackRestriction = async ({ roomService, roomName, identity, sour
 
 /**
  * POST /api/meetings/:roomName/participants/:identity/mute
- * Body: { muted: boolean }
- *
- * Host-only. Immediately mutes (or restores) the target's current
- * microphone track, and -- unlike a participant muting themselves --
- * persists the restriction server-side via `canPublishSources` so the
- * participant cannot simply republish/unmute their own microphone while the
- * host has silenced them. `muted: false` lifts that restriction again (used
- * by the "request to unmute" workflow before asking the participant to
- * unmute themselves -- the host can lift the block, but only the
- * participant's own browser can actually (re)activate their microphone).
  */
 export const setParticipantMuted = async (req, res, next) => {
   try {
@@ -146,13 +125,6 @@ export const setParticipantMuted = async (req, res, next) => {
 
 /**
  * POST /api/meetings/:roomName/participants/:identity/camera
- * Body: { disabled: boolean }
- *
- * Host-only. Mirrors setParticipantMuted but for the camera track. Disabling
- * someone's camera does not, and cannot, imply it is still "active" in any
- * sense visible to Relay -- the participant's published camera track is
- * muted/unpublished and canPublishSources blocks republishing until the
- * host (directly, or via a "request to enable camera") lifts it.
  */
 export const setParticipantCameraDisabled = async (req, res, next) => {
   try {
@@ -199,13 +171,14 @@ export const setParticipantCameraDisabled = async (req, res, next) => {
 
 /**
  * POST /api/meetings/:roomName/participants/:identity/remove
- * Host-only. Disconnects the target participant from the room.
+ * Host-only. Disconnects target participant from room and records removal to prevent rejoining.
  */
 export const removeParticipantFromRoom = async (req, res, next) => {
   try {
     if (!config.livekit.isConfigured) return unconfiguredResponse(res);
 
     const { roomName, identity } = req.params;
+    const { participantName } = req.body || {};
     if (!roomName || !identity) {
       return res.status(400).json({
         success: false,
@@ -224,9 +197,150 @@ export const removeParticipantFromRoom = async (req, res, next) => {
       });
     }
 
-    await getRoomServiceClient().removeParticipant(roomName, identity);
+    // 1. Record participant as removed in accessControlService
+    await accessControlService.removeParticipant(roomName, identity, participantName || 'Participant');
+
+    // 2. Disconnect participant from LiveKit
+    try {
+      await getRoomServiceClient().removeParticipant(roomName, identity);
+    } catch (lkErr) {
+      console.warn(`[Relay Host] LiveKit removal warning for ${identity}:`, lkErr.message);
+    }
 
     return res.status(200).json({ success: true, identity });
+  } catch (err) {
+    if (sendAuthzError(res, err)) return undefined;
+    return next(err);
+  }
+};
+
+/**
+ * POST /api/meetings/:roomName/lock
+ * Host-only. Locks or unlocks the meeting room.
+ */
+export const setMeetingLock = async (req, res, next) => {
+  try {
+    const { roomName } = req.params;
+    const { locked } = req.body || {};
+
+    if (!roomName) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'roomName is required.', statusCode: 400 },
+      });
+    }
+    if (typeof locked !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: { message: '`locked` must be a boolean.', statusCode: 400 },
+      });
+    }
+
+    await authorizeHostRequest(req, roomName);
+    const result = await accessControlService.setMeetingLocked(roomName, locked);
+
+    return res.status(200).json({ success: true, isLocked: result.isLocked });
+  } catch (err) {
+    if (sendAuthzError(res, err)) return undefined;
+    return next(err);
+  }
+};
+
+/**
+ * GET /api/meetings/:roomName/access-state
+ * Allows any authenticated meeting participant to check current room lock and waiting-room status.
+ */
+export const getMeetingAccessStateEndpoint = async (req, res, next) => {
+  try {
+    const { roomName } = req.params;
+    if (!roomName) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'roomName is required.', statusCode: 400 },
+      });
+    }
+
+    const participant = await verifyParticipantToken(req, roomName);
+    const state = await accessControlService.getAccessState(roomName);
+
+    return res.status(200).json({
+      success: true,
+      waitingRoomEnabled: state.waitingRoomEnabled,
+      isLocked: state.isLocked,
+      isHost: participant.isHost,
+    });
+  } catch (err) {
+    if (sendAuthzError(res, err)) return undefined;
+    return next(err);
+  }
+};
+
+/**
+ * GET /api/meetings/:roomName/waiting-room
+ * Host-only. Returns the list of currently waiting participants.
+ */
+export const getWaitingParticipantsEndpoint = async (req, res, next) => {
+  try {
+    const { roomName } = req.params;
+    if (!roomName) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'roomName is required.', statusCode: 400 },
+      });
+    }
+
+    await authorizeHostRequest(req, roomName);
+    const waitingParticipants = await accessControlService.getWaitingParticipants(roomName);
+
+    return res.status(200).json({ success: true, waitingParticipants });
+  } catch (err) {
+    if (sendAuthzError(res, err)) return undefined;
+    return next(err);
+  }
+};
+
+/**
+ * POST /api/meetings/:roomName/waiting-room/:identity/admit
+ * Host-only. Admits a waiting participant into the meeting.
+ */
+export const admitWaitingParticipantEndpoint = async (req, res, next) => {
+  try {
+    const { roomName, identity } = req.params;
+    if (!roomName || !identity) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'roomName and identity are required.', statusCode: 400 },
+      });
+    }
+
+    await authorizeHostRequest(req, roomName);
+    const result = await accessControlService.admitParticipant(roomName, identity);
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    if (sendAuthzError(res, err)) return undefined;
+    return next(err);
+  }
+};
+
+/**
+ * POST /api/meetings/:roomName/waiting-room/:identity/reject
+ * Host-only. Declines admission for a waiting participant.
+ */
+export const rejectWaitingParticipantEndpoint = async (req, res, next) => {
+  try {
+    const { roomName, identity } = req.params;
+    if (!roomName || !identity) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'roomName and identity are required.', statusCode: 400 },
+      });
+    }
+
+    await authorizeHostRequest(req, roomName);
+    const result = await accessControlService.rejectParticipant(roomName, identity);
+
+    return res.status(200).json({ success: true, ...result });
   } catch (err) {
     if (sendAuthzError(res, err)) return undefined;
     return next(err);
@@ -259,6 +373,7 @@ export const endMeetingForEveryone = async (req, res, next) => {
       console.warn(`[Relay AI] Final meeting summary attempt noticed for ${roomName}:`, summaryErr.message);
     }
 
+    await accessControlService.clearRoom(roomName);
     await getRoomServiceClient().deleteRoom(roomName);
     chatStore.clearRoom(roomName);
 

@@ -40,7 +40,7 @@ apps/web/src/
 │       └── Footer.jsx               # Global footer
 │
 └── data/
-    └── mockParticipants.js         # Isolated participant state (You, Alex, Priya, Marcus)
+    └── mockParticipants.js         # Isolated participant state (You, Aditya, Priya, Manish)
 ```
 
 ---

@@ -11,8 +11,8 @@ export const INITIAL_MOCK_PARTICIPANTS = [
     avatarGradient: 'from-blue-600 to-indigo-600',
   },
   {
-    id: 'user-alex',
-    name: 'Alex Morgan',
+    id: 'user-aditya',
+    name: 'Aditya Mehta',
     initials: 'AM',
     role: 'Co-Host',
     isLocal: false,
@@ -33,8 +33,8 @@ export const INITIAL_MOCK_PARTICIPANTS = [
     avatarGradient: 'from-emerald-600 to-teal-600',
   },
   {
-    id: 'user-marcus',
-    name: 'Marcus Vance',
+    id: 'user-manish',
+    name: 'Manish Verma',
     initials: 'MV',
     role: 'Staff Engineer',
     isLocal: false,

@@ -12,10 +12,16 @@ import {
   UserX,
   BellRing,
   MessageSquare,
+  Lock,
+  Unlock,
+  Clock,
+  Check,
+  CheckCheck,
 } from 'lucide-react';
 import { Badge } from '../ui/Badge.jsx';
 import { muteParticipant, setParticipantCamera, removeParticipant } from '../../api/meetingApi.js';
 import { REQUEST_ACTIONS } from '../../utils/hostRequests.js';
+import { RemoveParticipantDialog } from './RemoveParticipantDialog.jsx';
 
 function getInitials(name = '') {
   if (!name) return 'U';
@@ -42,12 +48,22 @@ export const LiveParticipantsPanel = ({
   isHost = false,
   token,
   roomName,
+  isLocked = false,
+  waitingRoomEnabled = false,
+  waitingParticipants = [],
+  onToggleLock,
+  onAdmitWaiting,
+  onRejectWaiting,
+  onAdmitAllWaiting,
+  onRemoveParticipant,
   requestStatusByKey = {},
   onSendRequest,
   onDirectMessage,
 }) => {
   const participants = useParticipants();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLockToggling, setIsLockToggling] = useState(false);
+  const [participantToRemove, setParticipantToRemove] = useState(null);
   // identity -> a short action tag ('mic' | 'camera' | 'remove'), so a slow
   // request only disables that row's own buttons, and errors are per-row.
   const [pendingAction, setPendingAction] = useState({});
@@ -95,8 +111,25 @@ export const LiveParticipantsPanel = ({
       await onSendRequest?.(identity, REQUEST_ACTIONS.ENABLE_CAMERA);
     });
 
-  const handleRemove = identity =>
-    runAction(identity, 'remove', () => removeParticipant(roomName, identity, token));
+  const handleToggleLockClick = async () => {
+    if (!onToggleLock || isLockToggling) return;
+    setIsLockToggling(true);
+    try {
+      await onToggleLock(!isLocked);
+    } catch (err) {
+      console.warn('[Relay Access] Toggle lock failed:', err.message);
+    } finally {
+      setIsLockToggling(false);
+    }
+  };
+
+  const handleConfirmRemove = async (identity, name) => {
+    if (onRemoveParticipant) {
+      await onRemoveParticipant(identity, name);
+    } else {
+      await runAction(identity, 'remove', () => removeParticipant(roomName, identity, token));
+    }
+  };
 
   return (
     <aside
@@ -119,6 +152,102 @@ export const LiveParticipantsPanel = ({
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Meeting Security Status & Host Lock Control */}
+      <div className="px-4 py-2.5 border-b border-relay-800 bg-relay-950/50 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {isLocked ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-amber-400">
+              <Lock className="w-3.5 h-3.5" /> Meeting Locked
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs text-relay-400">
+              <Unlock className="w-3.5 h-3.5 text-relay-500" /> Meeting Unlocked
+            </span>
+          )}
+        </div>
+
+        {isHost && (
+          <button
+            type="button"
+            onClick={handleToggleLockClick}
+            disabled={isLockToggling}
+            className={`text-[11px] px-2.5 py-1 rounded-md border font-medium transition-colors ${
+              isLocked
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
+                : 'bg-relay-800 border-relay-700 text-relay-300 hover:text-white hover:bg-relay-700'
+            }`}
+          >
+            {isLockToggling ? 'Updating...' : isLocked ? 'Unlock Meeting' : 'Lock Meeting'}
+          </button>
+        )}
+      </div>
+
+      {/* Waiting Room Section (Host Only) */}
+      {isHost && (waitingParticipants.length > 0 || waitingRoomEnabled) && (
+        <div className="border-b border-relay-800 bg-relay-950/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-brand-light" />
+              <span className="text-xs font-semibold text-white">Waiting Room</span>
+              <Badge variant={waitingParticipants.length > 0 ? 'warning' : 'brand'} size="sm">
+                {waitingParticipants.length}
+              </Badge>
+            </div>
+
+            {waitingParticipants.length > 1 && (
+              <button
+                type="button"
+                onClick={onAdmitAllWaiting}
+                className="text-[11px] font-medium text-brand-light hover:text-white flex items-center gap-1 transition-colors"
+              >
+                <CheckCheck className="w-3 h-3" /> Admit All
+              </button>
+            )}
+          </div>
+
+          {waitingParticipants.length === 0 ? (
+            <p className="text-[11px] text-relay-500 italic py-0.5">
+              Waiting room is active. No participants are currently waiting.
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+              {waitingParticipants.map(wp => (
+                <div
+                  key={wp.identity}
+                  className="flex items-center justify-between p-2 rounded-lg bg-relay-850 border border-relay-700 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-[10px] text-brand-light font-bold shrink-0">
+                      {getInitials(wp.name)}
+                    </div>
+                    <span className="truncate text-white font-medium">{wp.name}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => onAdmitWaiting?.(wp.identity)}
+                      title="Admit to meeting"
+                      className="p-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRejectWaiting?.(wp.identity)}
+                      title="Decline admission"
+                      className="p-1 rounded bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search Input */}
       <div className="p-3 border-b border-relay-800 bg-relay-950/40">
@@ -299,7 +428,12 @@ export const LiveParticipantsPanel = ({
 
                   <button
                     type="button"
-                    onClick={() => handleRemove(participant.identity)}
+                    onClick={() =>
+                      setParticipantToRemove({
+                        identity: participant.identity,
+                        name: participant.name || participant.identity,
+                      })
+                    }
                     disabled={Boolean(busy)}
                     className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-medium transition-colors disabled:opacity-50"
                   >
@@ -337,6 +471,14 @@ export const LiveParticipantsPanel = ({
         </span>
         <span className="text-relay-500 font-mono text-[10px]">WebRTC SFU</span>
       </div>
+
+      {/* Remove Participant Confirmation Dialog */}
+      <RemoveParticipantDialog
+        isOpen={Boolean(participantToRemove)}
+        onClose={() => setParticipantToRemove(null)}
+        participant={participantToRemove}
+        onConfirm={handleConfirmRemove}
+      />
     </aside>
   );
 };

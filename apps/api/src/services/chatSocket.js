@@ -5,6 +5,7 @@ import { verifyRawToken } from './livekitAdmin.js';
 import { validateChatMessage } from './chatValidator.js';
 import { chatRateLimiter } from './chatRateLimiter.js';
 import { aiManager } from './aiManager.js';
+import { accessControlService } from './accessControlService.js';
 
 import {
   saveMessage,
@@ -57,6 +58,7 @@ export const setupChatSocket = (httpServer, customOptions = {}) => {
 
   ioInstance = io;
   aiManager.setIO(io);
+  accessControlService.setIO(io);
 
   // Authentication middleware using LiveKit JWT verification
   io.use(async (socket, next) => {
@@ -71,6 +73,22 @@ export const setupChatSocket = (httpServer, customOptions = {}) => {
         (headers.authorization?.startsWith('Bearer ') ? headers.authorization.slice(7) : null);
 
       const roomName = auth.roomName || query.roomName;
+
+      // Allow waiting-room sockets to connect to receive approval events without a LiveKit token
+      if (!token && (auth.isWaiting || query.isWaiting)) {
+        const waitingIdentity = auth.participantIdentity || query.participantIdentity;
+        const waitingName = auth.participantName || query.participantName || 'Waiting Participant';
+        if (waitingIdentity && roomName) {
+          socket.data = {
+            identity: String(waitingIdentity).trim(),
+            name: String(waitingName).trim(),
+            roomName: String(roomName).trim(),
+            isWaiting: true,
+            isHost: false,
+          };
+          return next();
+        }
+      }
 
       if (!token) {
         const err = new Error('Authentication required: Missing access token.');
@@ -116,7 +134,14 @@ export const setupChatSocket = (httpServer, customOptions = {}) => {
   });
 
   io.on('connection', socket => {
-    const { identity, name, roomName } = socket.data;
+    const { identity, name, roomName, isWaiting, isHost } = socket.data;
+
+    // Waiting-room participants only join their dedicated waiting notification channel
+    if (isWaiting) {
+      const waitingChannel = `waiting:${roomName}:${identity}`;
+      socket.join(waitingChannel);
+      return;
+    }
 
     // Join room broadcast channel (for everyone chat in this specific meeting)
     const roomChannel = `room:${roomName}`;
@@ -125,6 +150,21 @@ export const setupChatSocket = (httpServer, customOptions = {}) => {
     // Join private user channel (for direct messages specifically in this room)
     const userChannel = `user:${roomName}:${identity}`;
     socket.join(userChannel);
+
+    // If host connects, hydrate them with the current waiting participants list
+    if (isHost) {
+      accessControlService.getWaitingParticipants(roomName).then(waitingList => {
+        if (waitingList && waitingList.length > 0) {
+          socket.emit('access:waiting_room_update', {
+            roomName,
+            waitingParticipants: waitingList,
+            count: waitingList.length,
+          });
+        }
+      }).catch(err => {
+        console.warn('[Relay Access] Initial waiting list hydration warning:', err.message);
+      });
+    }
 
     /**
      * Handle incoming chat message sending.

@@ -21,7 +21,8 @@ import { MediaDeviceWarningBanner } from './MediaDeviceWarningBanner.jsx';
 import { HostRequestPrompt } from './HostRequestPrompt.jsx';
 import { RecordingStatusBanner, RecordingErrorBanner } from './RecordingStatusBanner.jsx';
 import { RecordingConsentDialog } from './RecordingConsentDialog.jsx';
-import { Radio } from 'lucide-react';
+import { Radio, UserX } from 'lucide-react';
+import { useAccessControl } from '../../hooks/useAccessControl.js';
 import { describeMediaDeviceFailure, isMediaDeviceError } from '../../utils/mediaErrors.js';
 import {
   HOST_CONTROL_TOPIC,
@@ -102,6 +103,22 @@ function MeetingRoomInner({
     localParticipant,
     participants,
     room,
+  });
+
+  const [removedNotice, setRemovedNotice] = useState(null);
+
+  const handleRemovedSelf = useCallback(data => {
+    console.warn('[Relay Access] Local participant was removed by host:', data);
+    setRemovedNotice(data?.message || 'You have been removed from the meeting by the host.');
+    room?.disconnect();
+  }, [room]);
+
+  const access = useAccessControl({
+    token,
+    roomName: room?.name || roomName,
+    isHost,
+    localParticipantIdentity: localParticipant?.identity,
+    onParticipantRemovedSelf: handleRemovedSelf,
   });
 
 
@@ -622,6 +639,7 @@ function MeetingRoomInner({
         roomId={room?.name}
         participantCount={participants.length}
         onLeaveClick={() => setShowLeaveDialog(true)}
+        isLocked={access.isLocked}
       />
 
       {/* Main Workspace (Grid + Panels) */}
@@ -636,7 +654,15 @@ function MeetingRoomInner({
           onClose={() => setActivePanel(null)}
           isHost={isHost}
           token={token}
-          roomName={room?.name}
+          roomName={room?.name || roomName}
+          isLocked={access.isLocked}
+          waitingRoomEnabled={access.waitingRoomEnabled}
+          waitingParticipants={access.waitingParticipants}
+          onToggleLock={access.toggleLock}
+          onAdmitWaiting={access.admit}
+          onRejectWaiting={access.reject}
+          onAdmitAllWaiting={access.admitAll}
+          onRemoveParticipant={access.removeParticipantAction}
           requestStatusByKey={requestStatusByKey}
           onSendRequest={sendHostRequest}
           onDirectMessage={participant => {
@@ -700,6 +726,7 @@ function MeetingRoomInner({
         unreadCount={chatUnreadCount}
         unreadPrivateCount={chatUnreadPrivateCount}
         isAIActive={ai.isActive}
+        waitingCount={access.waitingParticipants.length}
       />
 
       {/* Leave Meeting Confirmation Dialog */}
@@ -722,6 +749,32 @@ function MeetingRoomInner({
         starting={startingRecording}
         error={recordingError}
       />
+
+      {/* Notice shown when this participant is removed by the host */}
+      {removedNotice && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-relay-900 border border-red-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-red-950/80 border border-red-500/40 flex items-center justify-center text-red-400 mx-auto">
+              <UserX className="w-7 h-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-bold text-white">Removed from Meeting</h2>
+              <p className="text-xs text-relay-400 leading-relaxed">
+                {removedNotice} You cannot rejoin this meeting unless permitted by the host.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => onLeaveRoom?.()}
+                className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium text-sm transition-colors shadow-lg shadow-red-600/30"
+              >
+                Return to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

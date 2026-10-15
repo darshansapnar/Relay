@@ -16,7 +16,8 @@ async function parseJsonResponse(response) {
 /**
  * API client helper to request a LiveKit access token from the Relay backend
  */
-export async function requestMeetingToken(roomName, participantName) {
+export async function requestMeetingToken(roomName, participantName, options = {}) {
+  const { waitingRoomEnabled = false, participantIdentity } = options;
   const response = await fetch('/api/meetings/token', {
     method: 'POST',
     headers: {
@@ -25,6 +26,8 @@ export async function requestMeetingToken(roomName, participantName) {
     body: JSON.stringify({
       roomName,
       participantName,
+      waitingRoomEnabled,
+      participantIdentity,
     }),
   });
 
@@ -88,6 +91,72 @@ export async function endMeeting(roomName, hostToken) {
     method: 'POST',
     headers: { Authorization: `Bearer ${hostToken}` },
   });
+
+  return parseJsonResponse(response);
+}
+
+/**
+ * Access Control APIs
+ */
+export async function lockMeeting(roomName, locked, hostToken) {
+  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/lock`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${hostToken}`,
+    },
+    body: JSON.stringify({ locked }),
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function getMeetingAccessState(roomName, token) {
+  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/access-state`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function getWaitingParticipants(roomName, hostToken) {
+  const response = await fetch(`/api/meetings/${encodeURIComponent(roomName)}/waiting-room`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${hostToken}`,
+    },
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function admitWaitingParticipant(roomName, identity, hostToken) {
+  const response = await fetch(
+    `/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/admit`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${hostToken}`,
+      },
+    }
+  );
+
+  return parseJsonResponse(response);
+}
+
+export async function rejectWaitingParticipant(roomName, identity, hostToken) {
+  const response = await fetch(
+    `/api/meetings/${encodeURIComponent(roomName)}/waiting-room/${encodeURIComponent(identity)}/reject`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${hostToken}`,
+      },
+    }
+  );
 
   return parseJsonResponse(response);
 }

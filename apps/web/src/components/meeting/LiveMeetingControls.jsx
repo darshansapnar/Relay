@@ -33,6 +33,7 @@ export const LiveMeetingControls = ({
   unreadCount = 0,
   unreadPrivateCount = 0,
   isAIActive = false,
+  waitingCount = 0,
 }) => {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant();
@@ -284,9 +285,18 @@ export const LiveMeetingControls = ({
           title="Participants list"
         >
           <Users className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-relay-700 text-[10px] font-semibold text-white rounded-full flex items-center justify-center border border-relay-900">
-            {participants.length}
-          </span>
+          {isHost && waitingCount > 0 ? (
+            <span
+              className="absolute -top-1 -right-1 px-1 min-w-4 h-4 bg-amber-500 text-[10px] font-bold text-relay-950 rounded-full flex items-center justify-center border border-relay-900 shadow-sm animate-pulse"
+              title={`${waitingCount} participant${waitingCount > 1 ? 's' : ''} waiting for admission`}
+            >
+              +{waitingCount}
+            </span>
+          ) : (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-relay-700 text-[10px] font-semibold text-white rounded-full flex items-center justify-center border border-relay-900">
+              {participants.length}
+            </span>
+          )}
         </button>
 
         {/* AI Assistant Panel Toggle */}

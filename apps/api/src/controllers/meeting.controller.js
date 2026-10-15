@@ -6,6 +6,7 @@ import {
   buildRoomMetadata,
   parseRoomMetadata,
 } from '../services/livekitAdmin.js';
+import { accessControlService } from '../services/accessControlService.js';
 
 export const createMeetingToken = async (req, res, next) => {
   try {
@@ -23,7 +24,12 @@ export const createMeetingToken = async (req, res, next) => {
       });
     }
 
-    const { roomName, participantName } = req.body || {};
+    const {
+      roomName,
+      participantName,
+      waitingRoomEnabled = false,
+      participantIdentity: clientIdentity,
+    } = req.body || {};
 
     // 2. Validate room name
     if (!roomName || typeof roomName !== 'string') {
@@ -84,61 +90,88 @@ export const createMeetingToken = async (req, res, next) => {
     // Strip HTML/control characters for safety
     const sanitizedParticipant = trimmedParticipant.replace(/[<>]/g, '').slice(0, 64);
 
-    // 4. Generate unique server-side participant identity
-    const participantIdentity = `user_${Date.now()}_${randomUUID().substring(0, 8)}`;
+    // 4. Determine or maintain unique server-side participant identity
+    const participantIdentity =
+      typeof clientIdentity === 'string' && clientIdentity.trim().length > 0
+        ? clientIdentity.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)
+        : `user_${Date.now()}_${randomUUID().substring(0, 8)}`;
 
-    // 5. Determine host status server-side: whoever is first to request a
-    // token for a room with no recorded host claims it, and that claim is
-    // recorded in the room's own metadata (not trusted from the client) so
-    // every later participant -- and the backend, when authorizing
-    // moderation actions -- can agree on who the host is.
-    //
-    // This deliberately keys off the metadata claim, not live participant
-    // count: numParticipants reflects who has actually completed a LiveKit
-    // connection, which lags token issuance (page load, media permissions,
-    // etc). Keying off numParticipants would let a second, faster-connecting
-    // requester steal host from someone whose token was already issued but
-    // hadn't connected yet.
-    //
-    // If this check fails for any reason (LiveKit admin API hiccup), fail
-    // open to "not host" rather than blocking the join entirely.
+    // 5. Determine host status server-side
     let isHost = false;
     try {
       const roomService = getRoomServiceClient();
-      const existingRooms = await roomService.listRooms([sanitizedRoom]);
-      const { hostIdentity: existingHostIdentity } = parseRoomMetadata(existingRooms[0]?.metadata);
+      const accessState = await accessControlService.getAccessState(sanitizedRoom).catch(() => ({}));
+      let existingHostIdentity = accessState?.hostIdentity;
 
       if (!existingHostIdentity) {
-        await roomService.createRoom({
-          name: sanitizedRoom,
-          metadata: buildRoomMetadata({ hostIdentity: participantIdentity }),
-        });
+        try {
+          const existingRooms = await roomService.listRooms([sanitizedRoom]);
+          existingHostIdentity = parseRoomMetadata(existingRooms[0]?.metadata).hostIdentity;
+        } catch (lkErr) {
+          console.warn('[Relay API] listRooms notice:', lkErr.message);
+        }
+      }
 
-        // Close the time-of-check-to-time-of-use gap between the listRooms
-        // read above and this createRoom write: if a second token request
-        // for the same brand-new room (e.g. two tabs, or React StrictMode
-        // double-invoking an auto-join effect in development -- see
-        // MeetingPage.jsx) raced in and its own createRoom call landed
-        // after ours, room metadata now reflects *their* identity as host,
-        // not ours. Re-reading here is what makes the token we're about to
-        // mint agree with whatever authorizeHostRequest() will see later;
-        // without it, a participant's own browser could believe it's host
-        // (isHost: true baked into its token) while every moderation
-        // request it makes is correctly rejected server-side -- the exact
-        // "You/Host badge but backend says no" bug this guards against.
-        const confirmedRooms = await roomService.listRooms([sanitizedRoom]);
-        const { hostIdentity: confirmedHostIdentity } = parseRoomMetadata(
-          confirmedRooms[0]?.metadata
-        );
-        isHost = confirmedHostIdentity === participantIdentity;
+      if (!existingHostIdentity) {
+        try {
+          await roomService.createRoom({
+            name: sanitizedRoom,
+            metadata: buildRoomMetadata({ hostIdentity: participantIdentity }),
+          });
+        } catch (createErr) {
+          console.warn('[Relay API] createRoom notice:', createErr.message);
+        }
+
+        isHost = true;
+
+        // Initialize meeting access controls in accessControlService
+        await accessControlService.initializeMeeting({
+          roomName: sanitizedRoom,
+          hostIdentity: participantIdentity,
+          waitingRoomEnabled: Boolean(waitingRoomEnabled),
+        });
+      } else {
+        isHost = existingHostIdentity === participantIdentity;
       }
     } catch (err) {
       console.warn('[Relay API] Host determination failed, continuing as non-host:', err.message);
     }
 
-    // 6. Construct LiveKit Access Token. `attributes` is synced to every
-    // participant in the room in real time via LiveKit, so this is how all
-    // clients -- not just this one -- learn who the host is.
+    // 6. If requester is not the host, enforce access controls (removal, lock, waiting room)
+    if (!isHost) {
+      const admission = await accessControlService.evaluateJoinRequest({
+        roomName: sanitizedRoom,
+        participantIdentity,
+        participantName: sanitizedParticipant,
+        isHost: false,
+      });
+
+      if (!admission.allowed) {
+        if (admission.waiting) {
+          // Unapproved participant is placed in the waiting room and granted NO LiveKit token
+          return res.status(200).json({
+            success: true,
+            waiting: true,
+            status: 'waiting',
+            roomName: sanitizedRoom,
+            participantIdentity,
+            participantName: sanitizedParticipant,
+            message: admission.message,
+          });
+        }
+
+        return res.status(admission.statusCode || 403).json({
+          success: false,
+          error: {
+            message: admission.message,
+            code: admission.reason?.toUpperCase() || 'ACCESS_DENIED',
+            statusCode: admission.statusCode || 403,
+          },
+        });
+      }
+    }
+
+    // 7. Construct LiveKit Access Token
     const at = new AccessToken(config.livekit.apiKey, config.livekit.apiSecret, {
       identity: participantIdentity,
       name: sanitizedParticipant,
@@ -152,17 +185,12 @@ export const createMeetingToken = async (req, res, next) => {
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
-      // Lets a participant update their own attributes (e.g. the host
-      // flagging "a local recording is in progress" -- see
-      // apps/web/src/components/meeting/MeetingRoomLive.jsx). Denied by
-      // default in LiveKit; each participant can still only ever write
-      // their own attributes, never anyone else's.
       canUpdateOwnMetadata: true,
     });
 
     const token = await at.toJwt();
 
-    // 7. Return only the safe connection details needed by the browser
+    // 8. Return safe connection details needed by the browser
     return res.status(200).json({
       success: true,
       token,

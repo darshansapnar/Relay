@@ -5,6 +5,11 @@ import {
   setParticipantCameraDisabled,
   removeParticipantFromRoom,
   endMeetingForEveryone,
+  setMeetingLock,
+  getMeetingAccessStateEndpoint,
+  getWaitingParticipantsEndpoint,
+  admitWaitingParticipantEndpoint,
+  rejectWaitingParticipantEndpoint,
 } from '../controllers/host.controller.js';
 
 import chatRoutes from './chat.routes.js';
@@ -21,10 +26,14 @@ router.use('/:roomName/messages', chatRoutes);
 // AI Assistant endpoints (state, transcripts, summaries, audio, toggle)
 router.use('/', aiRoutes);
 
+// Meeting access controls and state
+router.get('/:roomName/access-state', getMeetingAccessStateEndpoint);
+router.post('/:roomName/lock', setMeetingLock);
+router.get('/:roomName/waiting-room', getWaitingParticipantsEndpoint);
+router.post('/:roomName/waiting-room/:identity/admit', admitWaitingParticipantEndpoint);
+router.post('/:roomName/waiting-room/:identity/reject', rejectWaitingParticipantEndpoint);
 
-// Host-only moderation actions. Each verifies the caller's own LiveKit
-// access token server-side (see services/livekitAdmin.js) -- the UI only
-// hides these buttons from non-hosts, it does not grant access to them.
+// Host-only moderation actions
 router.post('/:roomName/participants/:identity/mute', setParticipantMuted);
 router.post('/:roomName/participants/:identity/camera', setParticipantCameraDisabled);
 router.post('/:roomName/participants/:identity/remove', removeParticipantFromRoom);

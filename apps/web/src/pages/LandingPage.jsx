@@ -15,9 +15,15 @@ export const LandingPage = () => {
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [prefilledJoinCode, setPrefilledJoinCode] = useState('');
 
-  const handleCreateRoom = (roomId, displayName) => {
+  const handleCreateRoom = (roomId, displayName, options = {}) => {
     setCreateModalOpen(false);
-    navigate(`/meeting/${roomId}`, { state: { displayName, autoJoin: true } });
+    navigate(`/meeting/${roomId}`, {
+      state: {
+        displayName,
+        autoJoin: true,
+        waitingRoomEnabled: Boolean(options.waitingRoomEnabled),
+      },
+    });
   };
 
   const handleJoinRoom = (roomId, displayName) => {

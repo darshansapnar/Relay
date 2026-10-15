@@ -9,6 +9,7 @@ export const MeetingHeader = ({
   onParticipantCountChange,
   onLeaveClick,
   isLive = true,
+  isLocked = false,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -50,6 +51,11 @@ export const MeetingHeader = ({
               ) : (
                 <Badge variant="warning" size="sm" dot dotColor="bg-amber-400">
                   UI Demo Mode
+                </Badge>
+              )}
+              {isLocked && (
+                <Badge variant="warning" size="sm" dot dotColor="bg-amber-400">
+                  Locked
                 </Badge>
               )}
             </div>
