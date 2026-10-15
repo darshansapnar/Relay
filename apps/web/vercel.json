@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://relay-api.onrender.com/api/:path*"
+      "destination": "https://relay-api-qf6a.onrender.com/api/:path*"
     },
     {
       "source": "/socket.io/:path*",
-      "destination": "https://relay-api.onrender.com/socket.io/:path*"
+      "destination": "https://relay-api-qf6a.onrender.com/socket.io/:path*"
     },
     {
       "source": "/(.*)",
